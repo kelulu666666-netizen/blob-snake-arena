@@ -1578,11 +1578,14 @@ function skinAbilConf(skinId) {
   for (const k in lo) o[k] = lo[k];
   return o;
 }
-/* 取某个皮肤角色装载的武器 id */
+/* 取某个皮肤角色装载的武器 id
+   v9.0.7 修复「武器无法具现」：以前只要 skinWeapon[skinId] 键存在（哪怕是 null）
+   就直接返回 null，导致商店里新装备的武器（写在 weaponEq）永远读不到。
+   现在只有「有效武器 id」才直接返回，null / 未设置一律回退到阵营装备 weaponEq。 */
 function skinWeaponConf(skinId) {
   const d = (typeof Store !== 'undefined' && Store.data) ? Store.data : null;
   if (!d) return null;
-  if (d.skinWeapon && d.skinWeapon[skinId] !== undefined) return d.skinWeapon[skinId];
+  if (d.skinWeapon && d.skinWeapon[skinId]) return d.skinWeapon[skinId];
   const fac = skinFactionOf(skinId);
   return (d.weaponEq && d.weaponEq[fac]) || null;
 }
@@ -1715,7 +1718,7 @@ const RULES_HTML = [
     '· <b>养成</b>：任何局内都会掉落<b>养成碎片</b>（绿色宝石），集满 10 片自动合成 1 颗<b>养成宝石</b>；每 3 局必定再得 1 颗（连续 10 局内上限 10 颗）。养成宝石可为<b>每一项能力升级，最高 10 级</b>，10 级时<b>效果翻倍</b>。<br>' +
     '· <b>养成碎片不再弹提示</b>（v9.0.2）：掉落与拾取全程<b>静默无弹窗</b>，进度改为 HUD 上的 <code>💎 4/10</code> 计数芯片；只有在<b>集满 10 片转成养成宝石</b>时才会提示一次。<br>' +
     '· <b>合成</b>：每 10 局获得 <b>1 颗合成宝石 + 1 颗能力宝石</b>，消耗二者可为当前阵营<b>合成第二个能力</b>——该角色此后拥有<b>两个能力</b>，局内用独立的「<b>副技</b>」键释放（位于主能力键上方，互不重叠）。<br>' +
-    '· <b>武器商店</b>：<b>球</b>装备<b>环绕飞刀</b>（按数量与威力定价），命中即砍断蛇身（断口之后化为食物）或切开球体（掉出部分食物），<b>每把飞刀用掉即消失</b>；<b>蛇</b>装备<b>电锯</b>（按切割速度定价），效果相同但按冷却反复使用。</li>',
+    '· <b>武器商店</b>（v9.0.7 仓库制）：购买后武器<b>放入仓库</b>，想用再点「<b>装备</b>」——装备会<b>同步给当前选中的角色</b>，进游戏立即具现（球 = 环绕飞刀，命中砍断蛇身 / 切开球体，<b>每把飞刀用掉即消失</b>；蛇 = 电锯，按冷却反复切割）。已修复旧版「买了武器却不显示」的问题。</li>',
   '<li><b>对手匹配</b>（v9.0.1）：<b>PvP 与卡牌</b>每局按你的综合实力（能力等级、武器）自动匹配对手——<b>每 5 局中：1 局比玩家弱、1 局比玩家强、其余 3 局实力相当</b>；对手同样会获得能力增强、额外能力与武器。基础模式与能力模式则按你选择的难度匹配。<br>' +
     '· <b>各角色拥有哪些能力、各是几级</b>（v9.0.2）：控制台里为<b>球阵营</b>与<b>蛇阵营</b>各列一张表，12 种能力逐项填等级（<b>0 = 不拥有</b>，1~10 为等级），两个阵营<b>互不干扰</b>，保存后下一局生效。</li>',
   '<li><b>多能力显示与释放</b>（v9.0.6 兑换制）：能力必须「<b>兑换</b>」后才能释放——<b>初始能力恒拥有</b>，其余能力在控制台对<b>当前角色</b>兑换（填 ≥1 即兑换，等级 1~10）。<br>' +
@@ -2417,7 +2420,8 @@ class World {
     // 玩家：v9.0.6 按「当前皮肤角色已拥有（已兑换）的能力」装载（默认初始能力恒在第 0 位）
     const p = this.player;
     if (p && d) {
-      /* v9.0.3：按「玩家当前使用的皮肤角色」取武器与能力配置 */
+      /* v9.0.3：按「玩家当前使用的皮肤角色」取武器与能力配置
+         v9.0.7：不自动兜底装武器 —— 武器一律由仓库手动「装备」到当前选中角色 */
       const wpId = skinWeaponConf(p.skinId);
       /* v9.0.6：玩家的可用能力 = 该角色「已拥有」的能力（初始能力 + 已兑换能力）
          其余能力必须先在修改器里对该角色「兑换」后才能释放 */
@@ -6952,7 +6956,9 @@ const Game = {
     const cat = WEAPONS[this.menu.faction] || WEAPONS.ball;
     const eqId = (d.weaponEq && d.weaponEq[this.menu.faction]) || null;
     $('weaponInfo').textContent = '当前阵营：' + (this.menu.faction === 'ball' ? '球（环绕飞刀）' : '蛇（电锯）') +
-      ' · 已装备：' + (eqId ? (weaponById(eqId) || {}).name : '无') + ' · 金币 ' + (d.coins | 0);
+      ' · 已装备：' + (eqId ? (weaponById(eqId) || {}).name : '无') +
+      ' · 仓库 ' + ((d.weaponOwned || []).length) + ' 件 · 金币 ' + (d.coins | 0) +
+      '（购买入仓库，点「装备」才装备到当前选中的角色）';
     const wl = $('weaponList');
     wl.innerHTML = '';
     for (let i = 0; i < cat.length; i++) {
@@ -7048,26 +7054,28 @@ const Game = {
     if (!wp) return;
     if ((d.coins | 0) < wp.price) { Sound.deny(); return; }
     d.coins -= wp.price;
+    /* v9.0.7：购买只入「仓库」，不自动装备；想用时在仓库里点「装备」——
+       装备动作会同步写到当前选中的角色（skinWeapon[skinId]），进游戏立即具现 */
     if (!d.weaponOwned) d.weaponOwned = [];
     if (d.weaponOwned.indexOf(id) < 0) d.weaponOwned.push(id);
-    const fac = wp.n ? 'ball' : 'snake';
-    if (!d.weaponEq) d.weaponEq = { ball: null, snake: null };
-    d.weaponEq[fac] = id;
     Store.save();
     Sound.buy();
-    this.toast('⚔️ 购买并装备：' + wp.name);
-    this.renderBase();
+    this.toast('🛒 已购买 ' + wp.name + '，已放入仓库（点击「装备」后生效）');    this.renderBase();
     this.refreshMenu();
   },
   equipWeapon(id) {
     const d = Store.data;
     const wp = weaponById(id);
     if (!wp) return;
+    const fac = wp.n ? 'ball' : 'snake';
     if (!d.weaponEq) d.weaponEq = { ball: null, snake: null };
-    d.weaponEq[wp.n ? 'ball' : 'snake'] = id;
+    d.weaponEq[fac] = id;
+    /* v9.0.7：同步写到「当前选择的角色」（菜单正在预览的优先），保证进游戏立即具现 */
+    const cur = (this.menu && this.menu.skinBall) || d.skinBall;
+    if (cur) { if (!d.skinWeapon) d.skinWeapon = {}; d.skinWeapon[cur] = id; }
     Store.save();
     Sound.buy();
-    this.toast('已装备：' + wp.name);
+    this.toast('已装备：' + wp.name + (cur ? '（已同步到 ' + getSkin('ball', cur).name + '）' : ''));
     this.renderBase();
   },
 
