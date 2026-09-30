@@ -1,0 +1,3423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="球蛇战场">
+<meta name="theme-color" content="#050a18">
+<meta name="format-detection" content="telephone=no">
+<title>球蛇战场 · Blob &amp; Snake Arena</title>
+<style>
+:root{
+  --bg0:#050a18; --bg1:#0a1430; --ink:#eaf2ff; --sub:#8ea6cc;
+  --blue:#3fa9f5; --cyan:#4ff0e0; --pink:#ff6fd8; --gold:#ffd24a;
+  --red:#ff5f6d; --green:#43e39a;
+  --glass:rgba(12,22,46,.78);
+  --line:rgba(120,180,255,.20);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{
+  margin:0; padding:0; width:100%; height:100%;
+  overflow:hidden; position:fixed; overscroll-behavior:none;
+  background:var(--bg0); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  touch-action:none;
+}
+#app{position:fixed; inset:0; overflow:hidden;}
+canvas#game{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none;}
+
+/* ---------- 通用面板 ---------- */
+.glass{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  backdrop-filter:blur(14px) saturate(140%);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:0 10px 40px rgba(0,0,0,.45);
+}
+.btn{
+  appearance:none; border:none; outline:none; cursor:pointer;
+  font-size:16px; font-weight:600; letter-spacing:.5px;
+  color:#fff; padding:12px 22px; border-radius:14px;
+  background:linear-gradient(135deg,#2f7cf6,#7b4ff7);
+  box-shadow:0 6px 20px rgba(63,120,246,.38);
+  transition:transform .12s ease, filter .12s ease;
+  touch-action:manipulation;
+}
+.btn:active{transform:scale(.95); filter:brightness(1.15);}
+.btn.ghost{
+  background:rgba(255,255,255,.08); border:1px solid var(--line);
+  box-shadow:none; color:var(--ink);
+}
+.btn.small{padding:8px 14px; font-size:13px; border-radius:11px;}
+.btn[disabled]{opacity:.45; pointer-events:none;}
+
+/* ---------- HUD ---------- */
+#hud{
+  position:absolute; left:0; right:0; top:0;
+  padding:calc(var(--safe-t) + 8px) calc(var(--safe-r) + 10px) 8px calc(var(--safe-l) + 10px);
+  display:flex; gap:8px; align-items:flex-start; justify-content:space-between;
+  pointer-events:none; z-index:20;
+}
+.hud-left{display:flex; flex-direction:column; gap:6px;}
+.hud-mid{display:flex; flex-direction:column; align-items:center; gap:4px;}
+.hud-right{display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; border-radius:12px; font-size:13px; font-weight:600;
+  background:rgba(8,16,36,.62); border:1px solid var(--line);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  white-space:nowrap;
+}
+.chip .k{color:var(--sub); font-size:11px; font-weight:500;}
+.chip .v{font-variant-numeric:tabular-nums; font-size:15px;}
+#timeChip .v{color:var(--cyan);}
+#rankChip .v{color:var(--gold);}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px var(--blue);}
+
+#topBtns{pointer-events:auto; display:flex; gap:8px;}
+.iconBtn{
+  width:38px; height:38px; border-radius:12px; font-size:16px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(8,16,36,.66); border:1px solid var(--line); color:var(--ink);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  touch-action:manipulation; cursor:pointer;
+}
+.iconBtn:active{transform:scale(.92);}
+
+/* ---------- 排行榜 ---------- */
+#board{
+  position:absolute; z-index:18; right:calc(var(--safe-r) + 10px);
+  top:calc(var(--safe-t) + 96px); width:138px; max-height:40vh;
+  overflow:hidden; pointer-events:none;
+  padding:6px 9px; font-size:10px;
+  background:rgba(12,22,46,.40);
+  -webkit-backdrop-filter:blur(7px) saturate(120%);
+  backdrop-filter:blur(7px) saturate(120%);
+  border:1px solid rgba(120,150,200,.18);
+  border-radius:14px;
+  box-shadow:0 6px 22px rgba(0,0,0,.28);
+  opacity:.92;
+}
+#board h4{margin:0 0 4px; font-size:9px; color:rgba(160,185,220,.85); font-weight:600; letter-spacing:1px;}
+.brow{display:flex; align-items:center; gap:4px; padding:2px 0; color:rgba(200,218,245,.82);}
+.brow .i{width:12px; text-align:center; font-size:10px;}
+.brow .n{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.brow .s{font-variant-numeric:tabular-nums; color:rgba(255,206,90,.9); font-weight:600;}
+.brow.me{color:#fff; background:linear-gradient(90deg,rgba(63,169,245,.22),transparent); border-radius:5px;}
+.brow.dead{opacity:.30;}
+
+/* ---------- 小地图 ---------- */
+#miniWrap{
+  position:absolute; z-index:18; left:calc(var(--safe-l) + 12px);
+  bottom:calc(var(--safe-b) + 16px); width:88px; height:88px;
+  border-radius:50%; overflow:hidden; padding:0; pointer-events:none;
+  border:1px solid var(--line);
+}
+#mini{width:100%;height:100%;display:block;}
+
+/* ---------- 冲刺按钮 ---------- */
+#dashBtn{
+  position:absolute; z-index:19; right:calc(var(--safe-r) + 18px);
+  bottom:calc(var(--safe-b) + 74px);
+  width:86px; height:86px; border-radius:50%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; font-size:15px; font-weight:700; color:#fff;
+  background:radial-gradient(circle at 35% 30%, rgba(120,220,255,.55), rgba(30,90,190,.55) 60%, rgba(10,20,50,.7));
+  border:2px solid rgba(140,220,255,.55);
+  box-shadow:0 8px 26px rgba(0,0,0,.5), inset 0 0 18px rgba(120,220,255,.28);
+  touch-action:none; cursor:pointer; -webkit-user-select:none; user-select:none;
+}
+#dashBtn .cd{font-size:11px; font-weight:600; opacity:.85;}
+#dashBtn:active{transform:scale(.93);}
+#dashBtn.cooling{filter:grayscale(.55) brightness(.8);}
+
+/* ---------- 遮罩层 ---------- */
+.overlay{
+  position:absolute; inset:0; z-index:40; display:none;
+  align-items:center; justify-content:center;
+  padding:calc(var(--safe-t) + 12px) 14px calc(var(--safe-b) + 12px);
+  background:radial-gradient(circle at 50% 25%, rgba(20,40,90,.6), rgba(3,6,16,.92));
+  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+.overlay.show{display:flex;}
+.card{
+  width:100%; max-width:430px; padding:18px 18px 20px;
+  max-height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+.title{
+  text-align:center; font-size:26px; font-weight:800; letter-spacing:1px;
+  background:linear-gradient(90deg,#6fd7ff,#b98bff 60%,#ff8fd0);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  margin:2px 0 4px;
+}
+.subtitle{text-align:center; color:var(--sub); font-size:12px; margin-bottom:14px;}
+.sec{margin:14px 0 8px; font-size:12px; color:var(--sub); font-weight:700; letter-spacing:1px;}
+
+.factions{display:flex; gap:10px;}
+.fac{
+  flex:1; padding:12px 10px; border-radius:16px; cursor:pointer; text-align:center;
+  background:rgba(255,255,255,.05); border:1.5px solid rgba(255,255,255,.10);
+  transition:.15s;
+}
+.fac .emo{font-size:28px; line-height:1.1;}
+.fac .nm{font-size:15px; font-weight:700; margin-top:4px;}
+.fac .ds{font-size:11px; color:var(--sub); margin-top:4px; line-height:1.45;}
+.fac.on{border-color:var(--blue); background:linear-gradient(180deg, rgba(63,169,245,.24), rgba(63,169,245,.06)); box-shadow:0 0 0 3px rgba(63,169,245,.14);}
+.fac.on.snake{border-color:var(--green); background:linear-gradient(180deg, rgba(67,227,154,.24), rgba(67,227,154,.06)); box-shadow:0 0 0 3px rgba(67,227,154,.14);}
+
+.skins{display:flex; gap:10px; overflow-x:auto; padding:4px 2px 8px; -webkit-overflow-scrolling:touch;}
+.skin{
+  flex:0 0 auto; width:80px; padding:8px 6px; border-radius:14px; text-align:center;
+  background:rgba(255,255,255,.05); border:1.5px solid rgba(255,255,255,.10); cursor:pointer;
+}
+.skin canvas{width:52px; height:52px; display:block; margin:0 auto;}
+.skin .sn{font-size:11px; margin-top:5px; font-weight:600;}
+.skin .sl{font-size:9px; color:var(--sub); margin-top:2px;}
+.skin.on{border-color:var(--gold); box-shadow:0 0 0 3px rgba(255,210,74,.16);}
+.skin.lock{opacity:.55;}
+
+/* 居中提示 toast */
+#toast{
+  position:absolute; left:50%; top:18%; transform:translate(-50%,-8px);
+  background:rgba(20,30,50,.92); border:1.5px solid var(--gold); color:#fff;
+  padding:10px 18px; border-radius:24px; font-size:15px; font-weight:700;
+  box-shadow:0 6px 24px rgba(0,0,0,.4); opacity:0; pointer-events:none;
+  transition:opacity .25s ease, transform .25s ease; z-index:60; white-space:nowrap;
+}
+#toast.show{opacity:1; transform:translate(-50%,0);}
+
+.diffs{display:flex; gap:8px;}
+.diff{
+  flex:1; text-align:center; padding:9px 4px; border-radius:12px; font-size:13px; font-weight:600;
+  background:rgba(255,255,255,.05); border:1.5px solid rgba(255,255,255,.10); cursor:pointer;
+}
+.diff.on{border-color:var(--pink); background:linear-gradient(180deg,rgba(255,111,216,.22),rgba(255,111,216,.05));}
+
+.bestRow{display:flex; gap:8px; margin-top:4px;}
+.bestBox{
+  flex:1; text-align:center; padding:10px 6px; border-radius:14px;
+  background:rgba(255,255,255,.05); border:1px solid var(--line);
+}
+.bestBox .bv{font-size:19px; font-weight:800; font-variant-numeric:tabular-nums;}
+.bestBox .bk{font-size:10px; color:var(--sub); margin-top:2px;}
+
+.actions{display:flex; gap:10px; margin-top:16px;}
+.actions .btn{flex:1;}
+
+/* 结算 */
+.resRank{text-align:center; margin:6px 0 10px;}
+.resRank .big{font-size:44px; font-weight:900; line-height:1; background:linear-gradient(90deg,#ffd24a,#ff8a5c); -webkit-background-clip:text; background-clip:text; color:transparent;}
+.resRank .lb{font-size:12px; color:var(--sub); margin-top:4px;}
+.newRec{
+  display:inline-block; margin-top:6px; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700;
+  background:linear-gradient(90deg,#ffd24a,#ff8a5c); color:#3a2000;
+}
+.stats{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
+.stat{background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:12px; padding:9px 10px;}
+.stat .sv{font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;}
+.stat .sk{font-size:10px; color:var(--sub); margin-top:1px;}
+.finalBoard{margin-top:12px; padding:10px 12px; border-radius:14px; background:rgba(255,255,255,.04); border:1px solid var(--line);}
+.finalBoard .brow{font-size:12px; padding:4px 0;}
+
+/* 规则 */
+.rulesBody{font-size:13px; line-height:1.75; color:#d8e6fb;}
+.rulesBody h5{margin:14px 0 4px; font-size:13px; color:var(--cyan);}
+.rulesBody ul{margin:4px 0; padding-left:18px;}
+.rulesBody li{margin:3px 0;}
+.rulesBody code{background:rgba(255,255,255,.10); padding:1px 5px; border-radius:5px; font-size:12px;}
+
+.hint{text-align:center; font-size:11px; color:var(--sub); margin-top:10px; line-height:1.6;}
+.kbd{background:rgba(255,255,255,.12); border-radius:4px; padding:1px 5px; font-size:11px;}
+/* ---------- 吐食按钮 ---------- */
+#spitBtn{
+  position:absolute; z-index:19; right:calc(var(--safe-r) + 116px);
+  bottom:calc(var(--safe-b) + 40px);
+  width:66px; height:66px; border-radius:50%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:1px; font-size:13px; font-weight:700; color:#fff;
+  background:radial-gradient(circle at 35% 30%, rgba(255,214,120,.55), rgba(160,110,20,.55) 60%, rgba(40,25,5,.7));
+  border:2px solid rgba(255,214,120,.55);
+  box-shadow:0 6px 20px rgba(0,0,0,.5), inset 0 0 14px rgba(255,214,120,.25);
+  touch-action:none; cursor:pointer; -webkit-user-select:none; user-select:none;
+}
+#spitBtn .cd{font-size:9px; font-weight:600; opacity:.85;}
+#spitBtn:active{transform:scale(.93);}
+#spitBtn.cooling{filter:grayscale(.55) brightness(.8);}
+  #copyright{position:fixed; left:0; right:0; bottom:calc(var(--safe-b) + 3px);
+    text-align:center; font-size:9px; letter-spacing:1px; color:#cfe0f8; opacity:.32;
+    pointer-events:none; z-index:33;}
+  .cr{margin-top:10px; font-size:10px; opacity:.55; text-align:center; color:var(--sub); letter-spacing:1px;}
+
+/* ---------- 地图选择 ---------- */
+.maps{display:flex; gap:8px; overflow-x:auto; padding:4px 2px 6px; -webkit-overflow-scrolling:touch;}
+.map{
+  flex:0 0 auto; min-width:92px; padding:8px 10px; border-radius:12px; text-align:center;
+  background:rgba(255,255,255,.05); border:1.5px solid rgba(255,255,255,.10); cursor:pointer;
+}
+.map .mn{font-size:13px; font-weight:700;}
+.map .md{font-size:9px; color:var(--sub); margin-top:2px; line-height:1.35;}
+.map.on{border-color:var(--cyan); box-shadow:0 0 0 3px rgba(79,240,224,.15);}
+.map.lock{opacity:.5;}
+.map.lock .md{color:var(--gold);}
+
+/* ---------- 金币 ---------- */
+.bestBox .bv.coin{color:var(--gold);}
+.coinBar{
+  margin-top:10px; padding:9px 12px; border-radius:12px; text-align:center;
+  background:rgba(255,210,74,.08); border:1px solid rgba(255,210,74,.25);
+  font-size:13px; color:#ffe6a8;
+}
+.coinBar .cv{font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums;}
+
+/* ---------- 商店 / 仓库 ---------- */
+.itemRow{
+  display:flex; align-items:center; gap:10px; padding:10px 10px; margin-top:8px;
+  border-radius:14px; background:rgba(255,255,255,.05); border:1px solid var(--line);
+}
+.itemRow .isym{
+  width:40px; height:40px; border-radius:12px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800;
+  background:linear-gradient(135deg, rgba(63,169,245,.25), rgba(123,79,247,.25));
+  border:1px solid var(--line);
+}
+.itemRow .iinfo{flex:1; min-width:0;}
+.itemRow .inm{font-size:14px; font-weight:700;}
+.itemRow .ids{font-size:11px; color:var(--sub); margin-top:2px; line-height:1.4;}
+.itemRow .iprice{font-size:12px; font-weight:800; color:var(--gold); white-space:nowrap;}
+.itemRow .icnt{font-size:12px; color:var(--ink); white-space:nowrap; font-weight:700;}
+.itemRow .btn.small{flex:0 0 auto; padding:8px 12px;}
+
+/* ---------- 密码 ---------- */
+.pwdInput{
+  width:100%; margin-top:10px; padding:12px 14px; border-radius:12px;
+  background:rgba(0,0,0,.35); border:1px solid var(--line); color:var(--ink);
+  font-size:18px; text-align:center; letter-spacing:6px; outline:none;
+  -webkit-appearance:none; appearance:none;
+}
+.pwdInput:focus{border-color:var(--blue);}
+
+/* ---------- 修改器 ---------- */
+.adRow{display:flex; align-items:center; gap:10px; margin-top:8px;}
+.adRow .al{flex:1; font-size:13px; color:var(--ink);}
+.adIn{
+  width:120px; padding:9px 10px; border-radius:10px; text-align:right;
+  background:rgba(0,0,0,.35); border:1px solid var(--line); color:var(--ink);
+  font-size:15px; font-weight:700; outline:none; -webkit-appearance:none; appearance:none;
+}
+.adBtns{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+.adBtns .btn{flex:1 1 40%;}
+.btn.warn{color:#ffb3b3; border-color:rgba(255,95,109,.4);}
+
+@media (max-height:640px){
+  .title{font-size:21px;} .card{padding:12px 14px 14px;}
+  .fac .ds{display:none;} .bestBox .bv{font-size:16px;}
+}
+
+@media (max-width: 480px){
+  .skins{gap:6px; padding-bottom:2px;}
+  .skin{width:66px; padding:6px 4px; border-radius:12px;}
+  .skin canvas{width:44px; height:44px;}
+  .skin .sn{font-size:10px; margin-top:3px;}
+  .skin .sl{font-size:8px; margin-top:1px;}
+  .card{padding:14px 14px 16px;}
+  .title{font-size:23px;}
+  .fac .emo{font-size:24px;}
+  .fac .ds{font-size:10px;}
+  #board{width:138px; top:calc(var(--safe-t) + 92px);}
+  #spitBtn{right:calc(var(--safe-r) + 104px); bottom:calc(var(--safe-b) + 30px); width:60px; height:60px; font-size:12px;}
+}
+@media (max-height: 420px){
+  #board{display:none !important;}
+  .title{font-size:20px; margin:0;}
+  .subtitle{margin-bottom:6px;}
+  .sec{margin:8px 0 5px;}
+  .factions .fac{padding:8px 8px;}
+  .fac .ds{display:none;}
+  #miniWrap{width:64px;height:64px;}
+  #dashBtn{width:70px;height:70px;font-size:13px; bottom:calc(var(--safe-b) + 46px);}
+  #spitBtn{width:54px;height:54px;font-size:11px; bottom:calc(var(--safe-b) + 46px); right:calc(var(--safe-r) + 92px);}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- 顶部 HUD -->
+  <div id="hud" style="display:none">
+    <div class="hud-left">
+      <div class="chip"><span class="dot" id="meDot"></span><span id="meName">你</span></div>
+      <div class="chip"><span class="k">分数</span><span class="v" id="scoreChip">0</span></div>
+      <div class="chip"><span class="k" id="sizeKey">质量</span><span class="v" id="sizeChip">0</span></div>
+    </div>
+    <div class="hud-mid">
+      <div class="chip" id="timeChip"><span class="k">剩余</span><span class="v" id="timeVal">3:00</span></div>
+      <div class="chip" id="killChip"><span class="k">吞噬</span><span class="v" id="killVal">0</span></div>
+      <div class="chip" id="reviveChip" style="display:none"><span class="k">复活</span><span class="v" id="reviveVal">0</span></div>
+    </div>
+    <div class="hud-right">
+      <div id="topBtns">
+        <div class="iconBtn" id="btnSound" title="音效">♪</div>
+        <div class="iconBtn" id="btnPause" title="暂停">❚❚</div>
+      </div>
+      <div class="chip" id="rankChip"><span class="k">排名</span><span class="v" id="rankVal">#1</span></div>
+    </div>
+  </div>
+
+  <!-- 实时排行榜 -->
+  <div id="board" class="glass" style="display:none">
+    <h4>实时排行榜</h4>
+    <div id="boardList"></div>
+  </div>
+
+  <!-- 小地图 -->
+  <canvas id="miniWrap" class="glass" width="176" height="176" style="display:none"></canvas>
+
+  <!-- 冲刺 -->
+  <div id="dashBtn" style="display:none">冲刺<span class="cd">就绪</span></div>
+  <!-- 吐食 -->
+  <div id="spitBtn" style="display:none">吐食<span class="cd">就绪</span></div>
+
+  <!-- 版权 -->
+  <div id="copyright">© Asuna(fcz) · 侵权必究</div>
+
+  <!-- 开始菜单 -->
+  <div class="overlay show" id="ovMenu">
+    <div class="card glass">
+      <div class="title" id="gameTitle">球蛇战场</div>
+      <div class="subtitle">BLOB &amp; SNAKE ARENA · 吞噬 · 进化 · 称霸</div>
+
+      <div class="sec">选择阵营</div>
+      <div class="factions">
+        <div class="fac on" id="facBall">
+          <div class="emo">◉</div>
+          <div class="nm">球体</div>
+          <div class="ds">吞噬小球变大<br>碾压蛇头 / 撞断蛇身</div>
+        </div>
+        <div class="fac snake" id="facSnake">
+          <div class="emo">∿</div>
+          <div class="nm">蛇</div>
+          <div class="ds">吃食物变长<br>缠杀小球 / 咬断他蛇</div>
+        </div>
+      </div>
+
+      <div class="sec">地图</div>
+      <div class="maps" id="mapList"></div>
+
+      <div class="sec">皮肤（用金币解锁）</div>
+      <div class="skins" id="skinList"></div>
+
+      <div class="sec">对手强度</div>
+      <div class="diffs" id="diffList">
+        <div class="diff" data-d="easy">休闲</div>
+        <div class="diff on" data-d="normal">普通</div>
+        <div class="diff" data-d="hard">激烈</div>
+      </div>
+
+      <div class="sec">战绩 · 金币</div>
+      <div class="bestRow">
+        <div class="bestBox"><div class="bv" id="bestBall">0</div><div class="bk">球体最高分</div></div>
+        <div class="bestBox"><div class="bv" id="bestSnake">0</div><div class="bk">蛇最高分</div></div>
+        <div class="bestBox"><div class="bv coin" id="coinBox">0</div><div class="bk">金币</div></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btnStart">开始游戏</button>
+      </div>
+      <div class="actions" style="margin-top:8px">
+        <button class="btn ghost small" id="btnShop">商店</button>
+        <button class="btn ghost small" id="btnRepo">仓库</button>
+        <button class="btn ghost small" id="btnRules2">规则</button>
+      </div>
+      <div class="hint">iPhone：按住屏幕朝目标方向拖动即可转向，松手保持前进<br>冲刺 / 吐食在右下角 · E 键吐食 · 空格冲刺</div>
+      <div class="cr">© Asuna(fcz) · 侵权必究</div>
+    </div>
+  </div>
+
+  <!-- 结算 -->
+  <div class="overlay" id="ovResult">
+    <div class="card glass">
+      <div class="title" id="resTitle">本局结束</div>
+      <div class="resRank">
+        <div class="big" id="resRank">#1</div>        <div class="lb" id="resRankLabel">全场排名</div>
+        <div id="resNew"></div>
+      </div>
+      <div class="stat" style="text-align:center">
+        <div class="sv" id="resScore" style="font-size:30px">0</div>
+        <div class="sk">本局得分</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="sv" id="resSize">0</div><div class="sk" id="resSizeKey">峰值质量</div></div>
+        <div class="stat"><div class="sv" id="resKill">0</div><div class="sk">吞噬对手</div></div>
+        <div class="stat"><div class="sv" id="resFood">0</div><div class="sk">吃到食物</div></div>
+        <div class="stat"><div class="sv" id="resTime">0s</div><div class="sk">存活时间</div></div>
+      </div>
+      <div class="coinBar">本局获得金币 <span class="cv" id="coinGain">+0</span>　当前金币 <span class="cv" id="coinTotal">0</span></div>
+      <div class="finalBoard"><h4 style="margin:0 0 4px;font-size:11px;color:var(--sub)">最终排行榜</h4><div id="resBoard"></div></div>
+      <div class="finalBoard" style="margin-top:8px">
+        <h4 style="margin:0 0 4px;font-size:11px;color:var(--sub)">本局得分构成</h4>
+        <div class="brow"><span class="n">成长量 ×3</span><span class="s" id="brGrowth">0</span></div>
+        <div class="brow"><span class="n">吞噬对手 ×200</span><span class="s" id="brKill">0</span></div>
+        <div class="brow"><span class="n">吃到食物 ×2</span><span class="s" id="brFood">0</span></div>
+        <div class="brow"><span class="n">存活时间 ×1.5</span><span class="s" id="brTime">0</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btnAgain">再来一局</button>
+        <button class="btn ghost" id="btnBackMenu">返回菜单</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 暂停 -->
+  <div class="overlay" id="ovPause">
+    <div class="card glass" style="max-width:340px">
+      <div class="title" style="font-size:22px">已暂停</div>
+      <div class="subtitle">深呼吸，战场还在等你</div>
+      <div class="actions" style="flex-direction:column">
+        <button class="btn" id="btnResume">继续游戏</button>
+        <button class="btn ghost" id="btnRules3">查看规则</button>
+        <button class="btn ghost" id="btnQuit">放弃本局</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 规则 -->
+  <div class="overlay" id="ovRules">
+    <div class="card glass">
+      <div class="title" style="font-size:22px">战场规则</div>
+      <div class="subtitle">由 AI 生成并平衡 · v2.0</div>
+      <div class="rulesBody" id="rulesBody"></div>
+      <div class="actions"><button class="btn" id="btnCloseRules">明白了</button></div>
+    </div>
+  </div>
+
+  <!-- 商店 -->
+  <div class="overlay" id="ovShop">
+    <div class="card glass">
+      <div class="title" style="font-size:22px">道具商店</div>
+      <div class="subtitle">金币：<span id="shopCoins">0</span> · 购买后到仓库装备，下一局生效</div>
+      <div id="shopList"></div>
+      <div class="actions"><button class="btn" id="btnCloseShop">关闭</button></div>
+    </div>
+  </div>
+
+  <!-- 仓库 -->
+  <div class="overlay" id="ovRepo">
+    <div class="card glass">
+      <div class="title" style="font-size:22px">仓库</div>
+      <div class="subtitle">装备的道具将在下一局开局消耗并生效</div>
+      <div id="repoList"></div>
+      <div class="actions"><button class="btn" id="btnCloseRepo">关闭</button></div>
+    </div>
+  </div>
+
+  <!-- 管理员密码 -->
+  <div class="overlay" id="ovPwd">
+    <div class="card glass" style="max-width:300px">
+      <div class="title" style="font-size:19px">身份验证</div>
+      <input id="pwdInput" class="pwdInput" type="password" inputmode="numeric" autocomplete="off" placeholder="请输入密码" maxlength="12">
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" id="btnPwdOk">确定</button>
+        <button class="btn ghost" id="btnPwdCancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改器 -->
+  <div class="overlay" id="ovAdmin">
+    <div class="card glass">
+      <div class="title" style="font-size:21px">控制台</div>
+      <div class="subtitle">仅限本机调试使用</div>
+
+      <div class="sec">战绩</div>
+      <div class="adRow"><span class="al">球体最高分</span><input id="adBestBall" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">蛇最高分</span><input id="adBestSnake" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">金币</span><input id="adCoins" class="adIn" type="number" inputmode="numeric"></div>
+
+      <div class="sec">下一局初始加成（持续生效）</div>
+      <div class="adRow"><span class="al">球初始质量 +</span><input id="adBallMass" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">蛇初始节数 +</span><input id="adSnakeSeg" class="adIn" type="number" inputmode="numeric"></div>
+
+      <div class="sec">解锁管理</div>
+      <div class="adBtns">
+        <button class="btn ghost small" id="adUnlockSkins">解锁全部皮肤</button>
+        <button class="btn ghost small" id="adLockSkins">重置皮肤解锁</button>
+        <button class="btn ghost small" id="adUnlockMaps">解锁全部地图</button>
+      </div>
+
+      <div class="sec">仓库道具（精确数量）</div>
+      <div class="adRow"><span class="al">疾风药剂</span><input id="adIt_speed10" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">生长激素</span><input id="adIt_growSeg" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">膨胀胶囊</span><input id="adIt_growMass" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">护盾发生器</span><input id="adIt_shield8" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adRow"><span class="al">复活护符</span><input id="adIt_revive" class="adIn" type="number" inputmode="numeric"></div>
+      <div class="adBtns">
+        <button class="btn ghost small" id="adItemsClear">清空道具</button>
+      </div>
+
+      <div class="sec">危险操作</div>
+      <div class="adBtns">
+        <button class="btn ghost small warn" id="adReset">一键恢复默认</button>
+      </div>
+      <div class="hint">修改数值后点保存生效 · 一键恢复会清除全部记录、金币与解锁</div>
+
+      <div class="actions">
+        <button class="btn" id="adSave">保存</button>
+        <button class="btn ghost" id="adClose">退出</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+/* =========================================================================
+ *  球蛇战场 Blob & Snake Arena
+ *  球球大作战 × 贪吃蛇 融合竞技  — 单文件离线 HTML5 游戏
+ * ========================================================================= */
+
+/* ---------------------------- 全局配置 ---------------------------- */
+const CFG = {
+  arenaR: 2600,          // 竞技场半径（圆形战场）
+  foodTarget: 420,       // 场上食物保有量
+  foodMass: 1,
+  foodR: 5,
+  ballStartMass: 44,     // 球初始质量
+  snakeStartSeg: 16,     // 蛇初始体节
+  snakeMinSeg: 8,        // 低于该体节数则断尾致死
+  segMaxMass: 3,         // 单节身体可贡献的吞噬质量上限
+  selfCutIdx: 14,        // 可被撞断的最靠前体节
+  bodyGap: 0.72,         // 身体判定半径系数
+  snakeSegMass: 6,       // 每节身体质量
+  snakeHeadMass: 60,     // 蛇头初始质量
+  headEatRatio: 1.10,    // 蛇头参与吞噬的阈值
+  snakeStartMass: 200,   // 蛇开局总质量
+  snakeHeadGrow: 1.1,    // 每增长一节蛇头增加的质量
+  growBase: 4,           // 增长一节所需能量基数
+  growStep: 0.5,         // 每节递增的成长成本
+  eatRatio: 1.12,        // 球体判定"明显更大"的倍数阈值
+  roundTime: 180,        // 单局时长（秒）
+  gridCell: 170,         // 空间网格边长
+  respawnDelay: 3.2,     // AI 阵亡后重生延迟
+  decayMass: 220,        // 超过该质量开始自然衰减
+  decayRate: 0.35,       // 每秒线性衰减量
+  /* --- 吐食 --- */
+  spitCd: 0,             // 吐食无冷却（吐到基础大小即禁止再吐）
+  spitBoost: 2.2,        // 吐食加速持续（秒）
+  spitBoostMul: 1.38,    // 吐食加速倍率
+  spitBallCost: 0.085,   // 球吐食消耗质量比例
+  spitSnakeSeg: 3,       // 蛇吐食消耗节数
+  /* --- AI 追击管理 --- */
+  huntMin: 30,           // 追玩家解除时间下限（秒）
+  huntMax: 60,           // 上限
+  huntBanT: 25,          // 解除追击的冷却期（秒）
+  huntMaxCount: 2,       // 同时追玩家的 AI 上限
+  huntSense: 760,        // 判定"正在追"的感知距离
+  /* --- 隐藏房间（藏在红色边界外的隐藏区） --- */
+  roomMax: 3,            // 每局隐藏房间数量上限
+  roomR: 230,            // 房间半径
+  roomGap: 150,          // 房间中心距红圈的间隔（藏在边界外）
+  roomGateW: 0.11,       // 边界通道半角（外表不变，仅该弧段可穿过，不触发死亡）
+  roomFood: 70,          // 房间食物数量
+  roomOpenMin: 35,       // 最早开放时间
+  roomOpenMax: 145,      // 最晚开放时间
+  roomStay: 28           // 开放持续（秒），之后光环消失但通道仍可用
+};
+
+const DIFF = {
+  easy:   { balls: 3, snakes: 3, aggr: 0.55, skill: 0.55, label: '休闲' },
+  normal: { balls: 5, snakes: 5, aggr: 0.85, skill: 0.78, label: '普通' },
+  hard:   { balls: 7, snakes: 7, aggr: 1.10, skill: 0.94, label: '激烈' }
+};
+
+/* ---------------------------- 工具函数 ---------------------------- */
+const TAU = Math.PI * 2;
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+function dist(ax, ay, bx, by) { return Math.sqrt(dist2(ax, ay, bx, by)); }
+function angDiff(a, b) {
+  let d = (b - a) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return d;
+}
+function turnToward(cur, target, maxRate, dt) {
+  const d = angDiff(cur, target);
+  const step = clamp(d, -maxRate * dt, maxRate * dt);
+  return cur + step;
+}
+/* 点到线段距离 */
+function segDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const L2 = dx * dx + dy * dy;
+  if (L2 < 1e-6) return dist(px, py, x1, y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / L2;
+  t = clamp(t, 0, 1);
+  return dist(px, py, x1 + dx * t, y1 + dy * t);
+}
+/* 球：质量 -> 半径 */
+function ballR(mass) { return 6 * Math.sqrt(Math.max(mass, 1)); }
+/* 蛇头：质量 -> 半径（同质量下比球小，换取速度与灵活性） */
+function headR(mass) { return 5 * Math.sqrt(Math.max(mass, 1)); }
+function fmtNum(n) { return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(Math.floor(n)); }
+
+/* ---------------------------- 道具 ---------------------------- */
+const ITEMS = [
+  { id: 'speed10', name: '疾风药剂',   desc: '开局获得 10 秒 1.5 倍加速', price: 20000, sym: '»' },
+  { id: 'growSeg', name: '生长激素',   desc: '下一局蛇初始体长 +6 节',    price: 25000, sym: '+' },
+  { id: 'growMass', name: '膨胀胶囊', desc: '下一局球初始质量 +40',      price: 25000, sym: '●' },
+  { id: 'shield8', name: '护盾发生器', desc: '开局无敌 8 秒',            price: 30000, sym: '◇' },
+  { id: 'revive', name: '复活护符',   desc: '阵亡自动原地满状态复活（开局自动携带全部库存）', price: 100000, sym: '✚' }
+];
+function getItem(id) { for (let i = 0; i < ITEMS.length; i++) if (ITEMS[i].id === id) return ITEMS[i]; return null; }
+
+/* ---------------------------- 地图 ---------------------------- */
+const MAPS = [
+  { id: 'plain', name: '原始旷野', price: 0,     thorns: 0,  fences: 0, desc: '经典圆形战场，没有障碍',
+    bg: ['#071127', '#04070f'], grid: 'rgba(90,150,230,.10)', edge: 'rgba(120,200,255,.65)' },
+  { id: 'thorn', name: '荆棘之地', price: 10000, thorns: 16, fences: 2, desc: '遍布刺球，蛇的天敌',
+    bg: ['#170a14', '#0a0409'], grid: 'rgba(220,120,160,.10)', edge: 'rgba(255,140,170,.60)' },
+  { id: 'maze', name: '铁壁迷宫', price: 30000, thorns: 6,  fences: 7, desc: '栅栏纵横，考验走位',
+    bg: ['#081a1c', '#040c0d'], grid: 'rgba(110,220,220,.10)', edge: 'rgba(140,230,230,.60)' },
+  { id: 'ruin', name: '荒芜废都', price: 60000, thorns: 24, fences: 4, desc: '危机四伏的终极战场',
+    bg: ['#1a1408', '#0c0904'], grid: 'rgba(230,190,110,.10)', edge: 'rgba(255,210,120,.60)' }
+];
+function getMap(id) { for (let i = 0; i < MAPS.length; i++) if (MAPS[i].id === id) return MAPS[i]; return MAPS[0]; }
+
+/* ---------------------------- 本地存储 ---------------------------- */
+const Store = {
+  key: 'blobsnake.v2',
+  data: null,
+  defaults: function () {
+    return {
+      bestBall: 0, bestSnake: 0, games: 0, sound: true,
+      faction: 'ball', skinBall: 'aqua', skinSnake: 'bamboo', diff: 'normal',
+      coins: 0,
+      items: { speed10: 0, growSeg: 0, growMass: 0, shield8: 0, revive: 0 },
+      equipped: [],
+      skinOwned: ['aqua', 'bamboo'],
+      maps: ['plain'], map: 'plain',
+      cheat: { ballMass: 0, snakeSeg: 0 }
+    };
+  },
+  load() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(this.key) || 'null'); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') d = {};
+    // 从 v1 迁移：保留历史纪录与偏好
+    try {
+      const old = JSON.parse(localStorage.getItem('blobsnake.v1') || 'null');
+      if (old && typeof old === 'object') {
+        if (typeof old.bestBall === 'number' && !('bestBall' in d)) d.bestBall = old.bestBall;
+        if (typeof old.bestSnake === 'number' && !('bestSnake' in d)) d.bestSnake = old.bestSnake;
+        if (typeof old.games === 'number' && !('games' in d)) d.games = old.games;
+        if (typeof old.sound === 'boolean' && !('sound' in d)) d.sound = old.sound;
+        if (typeof old.faction === 'string' && !('faction' in d)) d.faction = old.faction;
+        if (typeof old.skinBall === 'string' && !('skinBall' in d)) d.skinBall = old.skinBall;
+        if (typeof old.skinSnake === 'string' && !('skinSnake' in d)) d.skinSnake = old.skinSnake;
+        if (typeof old.diff === 'string' && !('diff' in d)) d.diff = old.diff;
+      }
+    } catch (e) {}
+    const def = this.defaults();
+    for (const k in def) {
+      if (!(k in d)) d[k] = (def[k] && typeof def[k] === 'object') ? JSON.parse(JSON.stringify(def[k])) : def[k];
+    }
+    if (!d.items || typeof d.items !== 'object') d.items = def.items;
+    else for (const kk in def.items) if (!(kk in d.items)) d.items[kk] = def.items[kk];
+    if (!Array.isArray(d.equipped)) d.equipped = [];
+    if (!Array.isArray(d.skinOwned)) d.skinOwned = def.skinOwned;
+    if (!Array.isArray(d.maps) || d.maps.indexOf('plain') < 0) d.maps = ['plain'];
+    if (!getMap(d.map)) d.map = 'plain';
+    if (!d.cheat || typeof d.cheat !== 'object') d.cheat = def.cheat;
+    // 价格体系上线前的旧版本把全部皮肤当免费默认写入存档，这里清理这类遗留，
+    // 确保付费皮肤（翡翠等）必须支付金币才能使用
+    let dirty = false;
+    const staleFree = ['aqua', 'lava', 'jade', 'bamboo', 'flame', 'ghost'];
+    if (Array.isArray(d.skinOwned) && d.skinOwned.length &&
+        staleFree.every(function (id) { return d.skinOwned.indexOf(id) >= 0; })) {
+      d.skinOwned = ['aqua', 'bamboo']; dirty = true;
+    }
+    if (d.skinOwned.indexOf(d.skinBall) < 0) { d.skinBall = 'aqua'; dirty = true; }
+    if (d.skinOwned.indexOf(d.skinSnake) < 0) { d.skinSnake = 'bamboo'; dirty = true; }
+    this.data = d;
+    if (dirty) this.save();
+    return d;
+  },
+  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) {} },
+  resetAll() {
+    try { localStorage.removeItem(this.key); } catch (e) {}
+    this.data = this.defaults();
+    this.save();
+  },
+  get bestAll() { return Math.max(this.data.bestBall, this.data.bestSnake); }
+};
+Store.load();
+
+/* ---------------------------- 皮肤 ---------------------------- */
+const BALL_SKINS = [
+  { id: 'aqua',    name: '星海蓝', c1: '#6fd0ff', c2: '#0b3f7a', glow: '#9fe6ff', pat: 'wave',    need: 0 },
+  { id: 'lava',    name: '熔岩红', c1: '#ff8a4a', c2: '#6b0f14', glow: '#ffb27a', pat: 'crack',   need: 10000 },
+  { id: 'jade',    name: '翡翠',   c1: '#5cf0b6', c2: '#06553f', glow: '#a5ffdc', pat: 'leaf',    need: 20000 },
+  { id: 'violet',  name: '暗夜紫', c1: '#c08cff', c2: '#331059', glow: '#d9b6ff', pat: 'star',    need: 40000 },
+  { id: 'gold',    name: '黄金球', c1: '#ffe07a', c2: '#8a5200', glow: '#fff0b0', pat: 'ring',    need: 80000 },
+  { id: 'rainbow', name: '彩虹球', c1: '#ff8fd0', c2: '#4a2ea0', glow: '#ffffff', pat: 'rainbow', need: 150000 }
+];
+const SNAKE_SKINS = [
+  { id: 'bamboo',  name: '青竹',   c1: '#8bffcf', c2: '#0f6b4c', glow: '#d6fff0', pat: 'stripe',  need: 0 },
+  { id: 'flame',   name: '赤焰',   c1: '#ff9a6a', c2: '#7a1410', glow: '#ffd0b0', pat: 'scale',   need: 10000 },
+  { id: 'ghost',   name: '幽灵白', c1: '#f2f8ff', c2: '#4a5f80', glow: '#ffffff', pat: 'scale',   need: 20000 },
+  { id: 'neon',    name: '霓虹粉', c1: '#ff8fe0', c2: '#6d1257', glow: '#ffc6f3', pat: 'stripe',  need: 40000 },
+  { id: 'blackgold', name: '黑金', c1: '#ffe08a', c2: '#151515', glow: '#ffd24a', pat: 'scale',   need: 80000 },
+  { id: 'aurora',  name: '极光',   c1: '#7ef0ff', c2: '#7a3cff', glow: '#ffffff', pat: 'rainbow', need: 150000 }
+];
+function skinList(faction) { return faction === 'ball' ? BALL_SKINS : SNAKE_SKINS; }
+function getSkin(faction, id) {
+  const list = skinList(faction);
+  for (let i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+  return list[0];
+}
+
+/* ---------------------------- AI 名字池 ---------------------------- */
+const BALL_NAMES = ['乒乓', '黑洞', '小汤圆', '滚球兽', '大橘', '星球', '果冻', '甜甜圈', '宇宙蛋', '铁球', '泡泡', '彗星', '麻薯', '钢镚'];
+const SNAKE_NAMES = ['贪吃鬼', '小青', '闪电', '幽灵蛇', '长虫', '阿黄', '竹叶青', '蜷蜷', '电线', '游龙', '面条', '小黑', '藤蔓', '疾风'];
+
+/* ---------------------------- 管理员 ---------------------------- */
+const ADMIN_PWD = '102938';
+const ADMIN_TAPS = 7;
+
+/* ---------------------------- 规则文本（AI 生成） ---------------------------- */
+const RULES_HTML = [
+  '<h5>一、战场与目标</h5>',
+  '<ul>',
+  '<li>圆形竞技场，半径 2600，场上同时存在<b>球体</b>与<b>蛇</b>（你 + 10 名 AI 对手，两边阵营都齐全）。</li>',
+  '<li>开局可选阵营：<b>球</b>（吞噬变大）或<b>蛇</b>（进食变长）。</li>',
+  '<li>单局 180 秒：时间到按实时积分结算；<b>玩家阵亡立即结算</b>，名次按阵亡瞬间冻结。AI 阵亡后 3.2 秒重生。</li>',
+  '<li>AI 对你的追击有时限：超过 30~60 秒会自动解除、转去找别的对手；同时追你的 AI 不超过 2 名。</li>',
+  '</ul>',
+  '<h5>二、变大 / 变长</h5>',
+  '<ul>',
+  '<li>全场恒定 420 颗能量豆，每颗 +1 能量，吃光即时补充。</li>',
+  '<li><b>球</b>：初始质量 44，半径 <code>6 × √质量</code>。吃豆 +1 质量，吞噬对手获得其质量。</li>',
+  '<li><b>蛇</b>：初始 16 节 + 64 点成长槽；能量累计到 <code>4 + 0.5 × 当前节数</code> 新增一节。蛇头质量 <code>60 + 1.1 × (节数 − 8)</code>，头半径 <code>5 × √头质量</code>，身体半径 = 头半径 × 0.72。</li>',
+  '<li>质量超过 220 每秒衰减 0.35；蛇超过 45 节后缓慢退化——防止无限膨胀。</li>',
+  '</ul>',
+  '<h5>三、速度与冲刺</h5>',
+  '<ul>',
+  '<li>球速 <code>250 × (44 / 质量)^0.16</code>——越大越慢；转向 6 rad/s 极灵活。</li>',
+  '<li>蛇速 <code>330 − 2.4 × (节数 − 16)</code>（下限 195）——<b>越长越慢</b>；转向 3.2 rad/s，急转会拖出长尾。</li>',
+  '<li><b>冲刺</b>：球耗 6% 质量换 1.1 秒 1.9 倍速（冷却 2.4s）；蛇耗 8 点能量（不足则掉 1 节）换 1.2 秒 1.6 倍速（冷却 2.6s）。</li>',
+  '<li><b>吐食</b>：右下角「吐食」按钮或按 E 键——把质量化作能量豆从身后喷出，换 2.2 秒 1.38 倍加速（<b>无冷却</b>，但吐到基础大小后就无法再吐）。球耗 8.5% 质量；蛇耗 3 节身体。吐出的能量豆比普通豆更值钱。</li>',
+  '</ul>',
+  '<h5>四、死亡判定（怎么算输）</h5>',
+  '<ul>',
+  '<li><b>蛇的三条死法</b>：① 头撞出竞技场；② 头撞到自己第 4 节以后的身体；③ 头被更大的球或更大的蛇头吃掉。</li>',
+  '<li><b>球不死</b>：撞墙只会被推回并每秒流失 4% 质量。</li>',
+  '<li><b>断尾</b>：蛇身<b>只有被体型大于它 1.12 倍的对手</b>撞到才会断（从被撞节起后半段炸成能量豆）；同级对手只能弹开。断尾后 1.6 秒受保护，不会被连续撕咬。剩余体节 &lt; 8 时被撞击者整个吞下。</li>',
+  '<li><b>AI 重生</b>：3.2 秒后在安全位置复活。玩家阵亡时若持有<b>复活护符</b>则自动满状态复活并获 3 秒无敌，否则本局结束。</li>',
+  '</ul>',
+  '<h5>五、吞噬判定（怎么算赢）</h5>',
+  '<ul>',
+  '<li><b>球 vs 球</b>：半径相差 1.12 倍且足够贴近 → 吞噬，获得对方 <b>85%</b> 质量；差距不足则弹开。</li>',
+  '<li><b>蛇头 vs 球</b>：蛇头更大（阈值 1.10，略宽）→ 蛇吞球获 <b>70%</b> 质量化为长度；球更大 → 蛇头被碾压，球获蛇总质量 <b>60%</b>，蛇身炸成豆子。</li>',
+  '<li><b>蛇头 vs 蛇头</b>：大的吃小的，获对方总质量 <b>60%</b>。</li>',
+  '<li><b>撞断蛇身</b>：更大的球获断裂部分 <b>45%</b> 质量；更大的蛇头获 <b>40%</b>。为防滚雪球，每节身体最多折算 3 点吞噬收益。</li>',
+  '<li><b>可吃提示</b>：你能吃掉的对手周围会出现<b>绿色光圈</b>；没有光圈的就是暂时惹不起的。</li>',
+  '<li><b>克制环</b>：大球稳吃蛇头 → 蛇靠速度与转向绕后断大球身后的他蛇 → 小球被两者通吃。体型差距决定一切。</li>',
+  '</ul>',
+  '<h5>六、积分与排名</h5>',
+  '<ul>',
+  '<li><code>得分 = 成长量 × 3 + 吞噬对手 × 200 + 吃到食物 × 2 + 存活秒数 × 1.5</code>（成长量 = 峰值体型 − 开局体型）。</li>',
+  '<li>排行榜实时刷新全部球与蛇；局终称号：冠军 / 亚军 / 季军 / 强者 / 中游 / 生存者。</li>',
+  '<li>最高分按阵营分别本地保存。</li>',
+  '</ul>',
+  '<h5>七、金币 · 商店 · 道具 · 地图</h5>',
+  '<ul>',
+  '<li>每局结束按表现结算金币：<code>存活秒数 × 0.03 + 吃豆 × 0.07 + 吞噬 × 3 + 成长量 × 0.01</code>（冠军再 +8，前三 +4）。<b>普通一局约 3~5 金币，单局最多 +20</b>。<b>阵亡惩罚</b>：存活不足 25 秒扣 30，阵亡时体积不足起始 1.15 倍再扣 40，单局最多扣 100（总金币不为负）。</li>',
+  '<li>金币可以在主菜单购买<b>皮肤</b>（500 / 1500 / 4000）、<b>道具</b>（商店）与<b>地图</b>（300 / 600 / 1000）。</li>',
+  '<li><b>道具</b>：疾风药剂（开局 10 秒加速）、生长激素（蛇 +6 节）、膨胀胶囊（球 +40 质量）、护盾发生器（开局无敌 8 秒）——在仓库装备后下一局开局消耗生效；<b>复活护符</b>为被动道具无需装备，开局自动携带全部库存，阵亡自动满状态复活（3 秒无敌），剩余次数显示在 HUD 右上角。</li>',
+  '<li><b>地图</b>：荆棘之地 / 铁壁迷宫 / 荒芜废都，各有刺球与栅栏：<b>蛇碰刺球会被截断一部分身体</b>（断口化作能量豆）；球碰刺球会变小，并在四周散落等量能量豆。栅栏对所有单位硬阻挡（蛇撞栅栏不致死，只会被弹开）。由死亡 / 断尾 / 吐食产生的能量豆是<b>金色特殊豆</b>，与自动刷新的普通豆不同。</li>',
+  '</ul>',
+  '<h5>八、隐藏房间</h5>',
+  '<ul>',
+  '<li>战场<b>红色边界之外</b>的隐藏区每局随机藏有 <b>1~3 个隐藏房间</b>，开局不可见，会在第 35~145 秒之间的随机时刻悄悄开放。</li>',
+  '<li>开放时红圈对应弧段<b>外表不变</b>却可穿过（不触发死亡），穿出后进入外部隐藏区，内部刷新约 70 颗金色特殊豆——<b>需自己沿边缘寻找</b>，小地图无标记。</li>',
+  '<li>⚠ 每个真实房间外还藏着 <b>2 个假房间</b>：它们同样发光、同样有食物，但<b>边界不会失效</b>——一旦靠近就会撞墙身亡。认清真假只能靠试探，谨慎下注。</li>',
+  '<li>房间光环 28 秒后消失（剩余豆还在，通道仍可走）。AI 偶尔会发现房间，但<b>每局每个 AI 只能进入一次</b>。</li>',
+  '</ul>'
+].join('');
+/* ---------------------------- 空间网格 ---------------------------- */
+class Grid {
+  constructor(cell) { this.cell = cell; this.map = new Map(); }
+  clear() { this.map.clear(); }
+  insert(x, y, item) {
+    const c = this.cell;
+    const k = Math.floor(x / c) + ',' + Math.floor(y / c);
+    let a = this.map.get(k);
+    if (!a) { a = []; this.map.set(k, a); }
+    a.push(item);
+  }
+  query(x, y, r) {
+    const c = this.cell;
+    const x0 = Math.floor((x - r) / c), x1 = Math.floor((x + r) / c);
+    const y0 = Math.floor((y - r) / c), y1 = Math.floor((y + r) / c);
+    const out = [];
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const a = this.map.get(cx + ',' + cy);
+        if (a) for (let i = 0; i < a.length; i++) out.push(a[i]);
+      }
+    }
+    return out;
+  }
+}
+
+/* 线段上最近点 */
+function closestOnSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const L2 = dx * dx + dy * dy;
+  let t = L2 < 1e-6 ? 0 : ((px - x1) * dx + (py - y1) * dy) / L2;
+  t = clamp(t, 0, 1);
+  return { x: x1 + dx * t, y: y1 + dy * t };
+}
+
+/* ---------------------------- 食物 ---------------------------- */
+class Food {
+  constructor(x, y, mass, sp) {
+    this.x = x; this.y = y; this.mass = mass;
+    this.sp = sp || 0;              // 0 普通 1 特殊（金豆） 2 房间豆
+    this.r = CFG.foodR * Math.sqrt(mass) * (this.sp ? 1.25 : 1);
+    this.hue = Math.floor(rand(0, 360));
+    this.dead = false;
+    this.ph = rand(0, TAU);
+  }
+}
+
+/* ---------------------------- 球体 ---------------------------- */
+let __uid = 1;
+class Ball {
+  constructor(o) {
+    this.id = __uid++;
+    this.type = 'ball';
+    this.x = o.x; this.y = o.y;
+    this.mass = o.mass;
+    this.startMass = o.mass;
+    this.isPlayer = !!o.isPlayer;
+    this.name = o.name;
+    this.skinId = o.skinId;
+    this.dir = rand(0, TAU);
+    this.targetDir = this.dir;
+    this.dead = false;
+    this.kills = 0; this.foods = 0; this.peak = this.mass;
+    this.aliveTime = 0;
+    this.dashT = 0; this.dashCd = 0;
+    this.boostT = 0; this.spitCd = 0;
+    this.thornCd = 0;
+    this.flash = 0;
+    this.mercy = 0;
+    this.huntT = 0; this.huntLimit = rand(CFG.huntMin, CFG.huntMax); this.huntBan = 0;
+    this.ai = { t: rand(0, .2), tx: o.x, ty: o.y, mode: 'food', room: null };
+  }
+  get r() { return ballR(this.mass); }
+  get massTotal() { return this.mass; }
+  get speed() { return 250 * Math.pow(CFG.ballStartMass / Math.max(this.mass, 12), 0.16); }
+  get maxTurn() { return 6; }
+  get growth() { return Math.max(0, this.peak - this.startMass); }
+  get score() { return Math.floor(this.growth * 3 + this.kills * 200 + this.foods * 2 + this.aliveTime * 1.5); }
+  addMass(m) { this.mass += m; if (this.mass > this.peak) this.peak = this.mass; }
+  tryDash() {
+    if (this.dashCd > 0) return false;
+    const cost = Math.max(3, this.mass * 0.06);
+    if (this.mass - cost < 12) return false;
+    this.mass -= cost;
+    this.dashT = 1.1; this.dashCd = 2.4;
+    return true;
+  }
+  /* 吐食：把质量化作金豆喷到身后，换取加速（无冷却，但吐到基础大小即禁止再吐） */
+  spitFood(w) {
+    if (this.dead) return false;
+    if (this.mass <= this.startMass) return false;          // 已吐到基础大小，禁止再吐
+    const cost = Math.max(5, this.mass * CFG.spitBallCost);
+    this.mass = Math.max(this.startMass, this.mass - cost);  // 不低于基础大小
+    const bx = this.x - Math.cos(this.dir) * (this.r + 26);
+    const by = this.y - Math.sin(this.dir) * (this.r + 26);
+    w.spawnFood(bx, by, cost * 0.8, 1);
+    this.boostT = CFG.spitBoost;
+    w.burst(bx, by, 6, '#ffd24a', 100);
+    w.emit('spit', bx, by, this.isPlayer);
+    return true;
+  }
+  update(dt, w) {
+    this.aliveTime += dt;
+    if (this.dashT > 0) this.dashT -= dt;
+    if (this.dashCd > 0) this.dashCd -= dt;
+    if (this.boostT > 0) this.boostT -= dt;
+    if (this.thornCd > 0) this.thornCd -= dt;
+    if (this.flash > 0) this.flash -= dt;
+    if (this.mercy > 0) this.mercy -= dt;
+    if (!this.isPlayer) aiThink(this, w, dt);
+    this.dir = turnToward(this.dir, this.targetDir, this.maxTurn, dt);
+    const sp = this.speed * (this.dashT > 0 ? 1.9 : 1) * (this.boostT > 0 ? CFG.spitBoostMul : 1);
+    this.x += Math.cos(this.dir) * sp * dt;
+    this.y += Math.sin(this.dir) * sp * dt;
+    // 边界：撞墙即死；处于已开放真实房间的隐形通道时可穿出，越外圈软墙推回（不致死）
+    const d = Math.hypot(this.x, this.y);
+    if (w.inGateSector(this)) {
+      const outer = CFG.arenaR + CFG.roomGap + CFG.roomR * 2 + 80;
+      if (d > outer) { const k = outer / d; this.x *= k; this.y *= k; }
+    } else if (d > CFG.arenaR - this.r) { w.killBall(this, 'wall'); return; }
+    // 自然衰减
+    if (this.mass > CFG.decayMass) this.mass -= CFG.decayRate * dt;
+    if (this.mass > this.peak) this.peak = this.mass;
+  }
+}
+
+/* ---------------------------- 蛇 ---------------------------- */
+class Snake {
+  constructor(o) {
+    this.id = __uid++;
+    this.type = 'snake';
+    this.x = o.x; this.y = o.y;
+    this.segments = o.segments;
+    this.startSeg = o.segments;
+    this.pending = o.pending || 0;
+    this.startMass = CFG.snakeHeadMass + Math.max(0, o.segments - CFG.snakeStartSeg) * CFG.snakeHeadGrow + o.segments * CFG.snakeSegMass + this.pending * 0.5;
+    this.isPlayer = !!o.isPlayer;
+    this.name = o.name;
+    this.skinId = o.skinId;
+    this.dir = rand(0, TAU);
+    this.targetDir = this.dir;
+    this.dead = false;
+    this.kills = 0; this.foods = 0; this.peak = this.totalMass;
+    this.aliveTime = 0;
+    this.dashT = 0; this.dashCd = 0;
+    this.boostT = 0; this.spitCd = 0;
+    this.flash = 0;
+    this.mercy = 0;
+    this.huntT = 0; this.huntLimit = rand(CFG.huntMin, CFG.huntMax); this.huntBan = 0;
+    this.trail = [{ x: o.x, y: o.y }];
+    this.trailLen = 0;
+    this.body = [];
+    this.ai = { t: rand(0, .2), mode: 'food', room: null };
+    // 预填充拖尾，避免开局身体全部堆在一点
+    for (let i = 1; i <= this.segments + 2; i++) {
+      const px = o.x - Math.cos(this.dir) * this.spacing * i;
+      const py = o.y - Math.sin(this.dir) * this.spacing * i;
+      this.trail.push({ x: px, y: py });
+      this.trailLen += this.spacing;
+    }
+    this.updateBody();
+  }
+  get headMass() { return CFG.snakeHeadMass + Math.max(0, this.segments - CFG.snakeStartSeg) * CFG.snakeHeadGrow; }
+  get totalMass() { return this.headMass + this.segments * CFG.snakeSegMass; }
+  get r() { return headR(this.headMass); }
+  get bodyR() { return this.r * 0.72; }
+  get spacing() { return this.bodyR * 1.15; }
+  /* 越长越慢 */
+  get speed() { return clamp(330 - (this.segments - CFG.snakeStartSeg) * 2.4, 195, 330); }
+  get maxTurn() { return 3.2; }
+  get growCost() { return CFG.growBase + CFG.growStep * this.segments; }
+  get massTotal() { return this.totalMass; }
+  get growth() { return Math.max(0, this.peak - this.startMass); }
+  get score() { return Math.floor(this.growth * 3 + this.kills * 200 + this.foods * 2 + this.aliveTime * 1.5); }
+  addMass(m) {
+    this.pending += m;
+    let guard = 0;
+    while (this.pending >= this.growCost && guard++ < 300) {
+      this.pending -= this.growCost;
+      this.segments++;
+    }
+    if (this.totalMass > this.peak) this.peak = this.totalMass;
+  }
+  tryDash() {
+    if (this.dashCd > 0) return false;
+    if (this.segments < 8) return false;   // 太短无法冲刺
+    const cost = 8;
+    if (this.pending >= cost) { this.pending -= cost; }
+    else { this.segments -= 1; this.pending = Math.max(0, this.growCost - cost + this.pending); }
+    this.dashT = 1.2; this.dashCd = 2.6;
+    return true;
+  }
+  /* 吐食：断掉尾节化作金豆，换取加速（无冷却，但吐到基础长度即禁止再吐） */
+  spitFood(w) {
+    if (this.dead) return false;
+    if (this.segments <= this.startSeg) return false;          // 已吐到基础长度，禁止再吐
+    const n = Math.min(CFG.spitSnakeSeg, this.segments - this.startSeg);
+    const tail = this.body;
+    for (let i = 1; i <= n; i++) {
+      const p = tail[tail.length - i] || { x: this.x, y: this.y };
+      w.spawnFood(p.x + rand(-10, 10), p.y + rand(-10, 10), CFG.snakeSegMass * 0.7, 1);
+    }
+    this.segments = Math.max(this.startSeg, this.segments - n); // 不低于基础长度
+    this.pending = 0;
+    this.boostT = CFG.spitBoost;
+    w.trimTrail(this);
+    this.updateBody();
+    w.burst(this.x, this.y, 8, '#ffd24a', 140);
+    w.emit('spit', this.x, this.y, this.isPlayer);
+    return true;
+  }
+  pushTrail() {
+    const t = this.trail;
+    const last = t[t.length - 1];
+    const d = dist(last.x, last.y, this.x, this.y);
+    if (d > 1.2) { t.push({ x: this.x, y: this.y }); this.trailLen += d; }
+    const need = (this.segments + 3) * this.spacing + 90;
+    let guard = 0;
+    while (this.trailLen > need && t.length > 3 && guard++ < 400) {
+      const p0 = t[0], p1 = t[1];
+      const seg = dist(p0.x, p0.y, p1.x, p1.y);
+      if (this.trailLen - seg < need) break;
+      this.trailLen -= seg;
+      t.shift();
+    }
+  }
+  updateBody() {
+    const t = this.trail, n = t.length;
+    const pts = [];
+    let target = this.spacing, carry = 0;
+    for (let i = n - 1; i > 0 && pts.length < this.segments; i--) {
+      const a = t[i], b = t[i - 1];
+      const seg = Math.hypot(a.x - b.x, a.y - b.y);
+      if (seg < 1e-6) continue;
+      while (carry + seg >= target && pts.length < this.segments) {
+        const k = (target - carry) / seg;
+        pts.push({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+        target += this.spacing;
+      }
+      carry += seg;
+    }
+    while (pts.length < this.segments) {
+      const p = t[0] || { x: this.x, y: this.y };
+      pts.push({ x: p.x, y: p.y });
+    }
+    this.body = pts;
+  }
+  update(dt, w) {
+    this.aliveTime += dt;
+    if (this.dashT > 0) this.dashT -= dt;
+    if (this.dashCd > 0) this.dashCd -= dt;
+    if (this.boostT > 0) this.boostT -= dt;
+    if (this.flash > 0) this.flash -= dt;
+    if (this.mercy > 0) this.mercy -= dt;
+    if (!this.isPlayer) aiThink(this, w, dt);
+    this.dir = turnToward(this.dir, this.targetDir, this.maxTurn, dt);
+    const sp = this.speed * (this.dashT > 0 ? 1.6 : 1) * (this.boostT > 0 ? CFG.spitBoostMul : 1);
+    this.x += Math.cos(this.dir) * sp * dt;
+    this.y += Math.sin(this.dir) * sp * dt;
+    this.pushTrail();
+    this.updateBody();
+    // 边界：撞墙即死；处于已开放房间的隐形通道时可穿出，越外圈软墙推回（不致死）
+    const d = Math.hypot(this.x, this.y);
+    if (w.inGateSector(this)) {
+      const outer = CFG.arenaR + CFG.roomGap + CFG.roomR * 2 + 80;
+      if (d > outer) { const k = outer / d; this.x *= k; this.y *= k; }
+    } else if (d > CFG.arenaR - this.r) { w.killSnake(this, null, 'wall'); return; }
+    // 超长缓慢退化
+    if (this.segments >= 45) {
+      this.pending -= 3 * dt;
+      let guard = 0;
+      while (this.pending < 0 && this.segments > 45 && guard++ < 50) {
+        this.segments--; this.pending += this.growCost;
+      }
+      if (this.pending < 0) this.pending = 0;
+    }
+    if (this.totalMass > this.peak) this.peak = this.totalMass;
+  }
+}
+
+/* ---------------------------- 世界 ---------------------------- */
+class World {
+  constructor(opts) {
+    this.faction = opts.faction;
+    this.skinId = opts.skinId;
+    this.diff = DIFF[opts.diff] || DIFF.normal;
+    this.mapDef = getMap(opts.mapId || 'plain');
+    this.loadout = opts.items || [];
+    this.cheat = opts.cheat || { ballMass: 0, snakeSeg: 0 };
+    this.revives = opts.revives || 0;
+    this.foods = [];
+    this.balls = [];
+    this.snakes = [];
+    this.particles = [];
+    this.respawns = [];
+    this.thorns = [];
+    this.fences = [];
+    this.rooms = [];
+    this.time = CFG.roundTime;
+    this.over = false;
+    this.playerDead = false;
+    this.onEvent = null;       // (type, x, y, extra)
+    this.onPlayerDead = null;  // (reason)
+    this.onTimeUp = null;
+    this.onRevive = null;     // (revivesLeft)
+    this.foodGrid = new Grid(CFG.gridCell);
+    this.nodeGrid = new Grid(CFG.gridCell);
+    this.usedNames = [];
+    this.build();
+  }
+
+  /* --- 生成 --- */
+  pickName(type) {
+    const pool = type === 'ball' ? BALL_NAMES : SNAKE_NAMES;
+    for (let i = 0; i < 40; i++) {
+      const n = pick(pool);
+      if (this.usedNames.indexOf(n) < 0) { this.usedNames.push(n); return n; }
+    }
+    return pick(pool) + randInt(2, 99);
+  }
+  randomPos(minDistFromBig) {
+    for (let i = 0; i < 60; i++) {
+      const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * CFG.arenaR * 0.92;
+      const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+      let ok = true;
+      for (let j = 0; j < this.balls.length; j++) {
+        const b = this.balls[j];
+        if (dist2(x, y, b.x, b.y) < Math.pow(b.r + (minDistFromBig || 400), 2)) { ok = false; break; }
+      }
+      if (ok) for (let j = 0; j < this.snakes.length; j++) {
+        const s = this.snakes[j];
+        if (dist2(x, y, s.x, s.y) < Math.pow(s.r + (minDistFromBig || 400), 2)) { ok = false; break; }
+      }
+      if (ok) return { x: x, y: y };
+    }
+    const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * CFG.arenaR * 0.9;
+    return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
+  }
+  spawnFood(x, y, mass, sp) {
+    const f = new Food(x, y, mass || CFG.foodMass, sp || 0);
+    this.foods.push(f);
+    return f;
+  }
+  fillFood() {
+    let guard = 0;
+    while (this.foods.length < CFG.foodTarget && guard++ < 40) {
+      const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * CFG.arenaR * 0.985;
+      this.spawnFood(Math.cos(a) * rr, Math.sin(a) * rr, CFG.foodMass, 0);
+    }
+  }
+  playerPos() {
+    // 玩家出生在中心区域，四周留出安全缓冲
+    const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * CFG.arenaR * 0.24;
+    return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
+  }
+  headEat(a, b) { return a.r > b.r * CFG.headEatRatio; }
+  spawnBall(isPlayer, name, skinId, mass) {
+    const p = isPlayer ? this.playerPos() : this.randomPos(900);
+    const b = new Ball({
+      x: p.x, y: p.y,
+      mass: mass || (isPlayer ? CFG.ballStartMass : rand(30, 40)),
+      isPlayer: isPlayer, name: name, skinId: skinId
+    });
+    this.balls.push(b);
+    return b;
+  }
+  spawnSnake(isPlayer, name, skinId, seg) {
+    const p = isPlayer ? this.playerPos() : this.randomPos(900);
+    const s = new Snake({
+      x: p.x, y: p.y,
+      segments: seg || (isPlayer ? CFG.snakeStartSeg : randInt(8, 10)),
+      pending: isPlayer ? CFG.snakeStartMass * 0.32 : 0,
+      isPlayer: isPlayer, name: name, skinId: skinId
+    });
+    this.snakes.push(s);
+    return s;
+  }
+
+  /* --- 地图障碍与隐藏房间 --- */
+  genMap() {
+    const R = CFG.arenaR;
+    // 刺球
+    for (let i = 0; i < this.mapDef.thorns; i++) {
+      for (let k = 0; k < 50; k++) {
+        const a = rand(0, TAU), rr = rand(620, R - 280);
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        let ok = true;
+        for (let j = 0; j < this.thorns.length; j++) {
+          if (dist2(x, y, this.thorns[j].x, this.thorns[j].y) < 340 * 340) { ok = false; break; }
+        }
+        if (ok) { this.thorns.push({ x: x, y: y, r: rand(24, 40), ph: rand(0, TAU) }); break; }
+      }
+    }
+    // 隐藏房间：藏在红色边界"外"的隐藏区；每个真实房间同时生成 2 个假房间（边界不失效的陷阱）
+    const nRooms = randInt(1, CFG.roomMax);
+    const usedAng = [];
+    const pickAngle = () => {
+      for (let t = 0; t < 30; t++) {
+        const a = rand(0, TAU);
+        let ok = true;
+        for (let j = 0; j < usedAng.length; j++) if (Math.abs(angDiff(a, usedAng[j])) < 0.4) { ok = false; break; }
+        if (ok) { usedAng.push(a); return a; }
+      }
+      const a = rand(0, TAU); usedAng.push(a); return a;
+    };
+    for (let i = 0; i < nRooms; i++) {
+      const a = pickAngle();
+      const dd = R + CFG.roomGap + CFG.roomR;
+      const openAt = rand(CFG.roomOpenMin, CFG.roomOpenMax);
+      // 真实房间：开放时开通道 + 大量食物
+      this.rooms.push({
+        x: Math.cos(a) * dd, y: Math.sin(a) * dd, r: CFG.roomR,
+        angle: a, gateW: CFG.roomGateW, real: true,
+        openAt: openAt, openT: CFG.roomStay,
+        state: 'hidden', aiSeen: {}, aiEntered: {}, inCount: 0
+      });
+      // 两个假房间：外观相同（发光 + 食物），但边界不失效 —— 玩家靠近即死
+      for (let f = 0; f < 2; f++) {
+        const fa = pickAngle();
+        this.rooms.push({
+          x: Math.cos(fa) * dd, y: Math.sin(fa) * dd, r: CFG.roomR,
+          angle: fa, gateW: CFG.roomGateW, real: false,
+          openAt: openAt, openT: CFG.roomStay,
+          state: 'hidden', aiSeen: {}, aiEntered: {}, inCount: 0
+        });
+      }
+    }
+    // 栅栏
+    for (let i = 0; i < this.mapDef.fences; i++) {
+      for (let k = 0; k < 50; k++) {
+        const a = rand(0, TAU), rr = rand(760, R - 460);
+        const cx = Math.cos(a) * rr, cy = Math.sin(a) * rr;
+        const fa = rand(0, TAU), fl = rand(300, 470);
+        const x1 = cx + Math.cos(fa) * fl / 2, y1 = cy + Math.sin(fa) * fl / 2;
+        const x2 = cx - Math.cos(fa) * fl / 2, y2 = cy - Math.sin(fa) * fl / 2;
+        if (Math.hypot(x1, y1) > R - 170 || Math.hypot(x2, y2) > R - 170) continue;
+        let ok = true;
+        for (let j = 0; j < this.fences.length; j++) {
+          const f = this.fences[j];
+          if (dist(cx, cy, (f.x1 + f.x2) / 2, (f.y1 + f.y2) / 2) < 620) { ok = false; break; }
+        }
+        if (ok) for (let j = 0; j < this.thorns.length; j++) {
+          if (segDist(this.thorns[j].x, this.thorns[j].y, x1, y1, x2, y2) < 210) { ok = false; break; }
+        }
+        if (ok) for (let j = 0; j < this.rooms.length; j++) {
+          if (dist(cx, cy, this.rooms[j].x, this.rooms[j].y) < this.rooms[j].r + 170) { ok = false; break; }
+        }
+        if (ok) { this.fences.push({ x1: x1, y1: y1, x2: x2, y2: y2, w: 9 }); break; }
+      }
+    }
+  }
+
+  build() {
+    this.genMap();
+    this.fillFood();
+    // 玩家
+    if (this.faction === 'ball') {
+      this.player = this.spawnBall(true, '你', this.skinId, CFG.ballStartMass);
+    } else {
+      this.player = this.spawnSnake(true, '你', this.skinId, CFG.snakeStartSeg);
+    }
+    this.applyLoadout(this.player);
+    // AI
+    for (let i = 0; i < this.diff.balls; i++) {
+      const sk = pick(BALL_SKINS).id;
+      this.spawnBall(false, this.pickName('ball'), sk);
+    }
+    for (let i = 0; i < this.diff.snakes; i++) {
+      const sk = pick(SNAKE_SKINS).id;
+      this.spawnSnake(false, this.pickName('snake'), sk);
+    }
+  }
+  /* 开局道具与修改器加成（只对玩家） */
+  applyLoadout(p) {
+    const items = this.loadout, cheat = this.cheat;
+    p.revives = this.revives;
+    for (let i = 0; i < items.length; i++) {
+      const id = items[i];
+      if (id === 'speed10') p.boostT = 10;
+      else if (id === 'shield8') p.mercy = 8;
+      else if (id === 'growSeg' && p.type === 'snake') p.segments += 6;
+      else if (id === 'growMass' && p.type === 'ball') p.addMass(40);
+    }
+    if (cheat) {
+      if (cheat.ballMass > 0 && p.type === 'ball') p.addMass(cheat.ballMass);
+      if (cheat.snakeSeg > 0 && p.type === 'snake') p.segments += cheat.snakeSeg;
+    }
+    if (items.length || (cheat && (cheat.ballMass > 0 || cheat.snakeSeg > 0))) {
+      // 开局加成不计入成长分：重置基线
+      p.updateBody && p.updateBody();
+      p.startMass = p.type === 'ball' ? p.mass : p.totalMass;
+      p.peak = p.startMass;
+      if (p.type === 'snake') p.trimTrail ? this.trimTrail(p) : null;
+    }
+  }
+
+  /* --- 事件 --- */
+  emit(t, x, y, extra) { if (this.onEvent) this.onEvent(t, x, y, extra); }
+  burst(x, y, n, color, power) {
+    for (let i = 0; i < n && this.particles.length < 220; i++) {
+      const a = rand(0, TAU), s = rand(0.3, 1) * (power || 120);
+      this.particles.push({
+        x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: rand(0.35, 0.9), max: 0.9, r: rand(2, 6), c: color
+      });
+    }
+  }
+  edgeTouch(e) { if (Math.random() < 0.25) this.emit('edge', e.x, e.y, null); }
+
+  eatFood(A, f) {
+    if (f.dead) return;
+    f.dead = true;
+    A.foods++;
+    if (A.type === 'ball') A.addMass(f.mass); else A.addMass(f.mass);
+    this.burst(f.x, f.y, 3, f.sp ? '#ffd24a' : '#ffe08a', 60);
+    this.emit('eat', f.x, f.y, A.isPlayer ? 1 : 0);
+  }
+
+  segMassOf(e) {
+    if (e.type !== 'snake') return e.massTotal;
+    return Math.min(e.massTotal, e.segments * CFG.segMaxMass + e.segments * 9);
+  }
+  eatEntity(pred, prey) {
+    if (prey.dead || pred.dead) return;
+    prey.dead = true;
+    pred.kills++;
+    pred.flash = 0.35;
+    const gain = this.segMassOf(prey);
+    if (pred.type === 'ball') {
+      pred.addMass(gain * (prey.type === 'ball' ? 0.85 : 0.6));
+    } else {
+      pred.addMass(gain * (prey.type === 'ball' ? 0.7 : 0.6));
+    }
+    if (prey.type === 'snake') this.explodeSnake(prey);
+    this.burst(prey.x, prey.y, prey.type === 'snake' ? 26 : 16,
+      prey.type === 'snake' ? '#7ef0ff' : '#ffd24a', prey.type === 'snake' ? 260 : 180);
+    this.emit('kill', prey.x, prey.y, { byPlayer: pred.isPlayer, victimIsPlayer: prey.isPlayer });
+    if (prey.isPlayer) this.playerDead = true;
+    else this.queueRespawn(prey);
+  }
+
+  killSnake(s, killer, reason) {
+    if (s.dead) return;
+    s.dead = true;
+    if (killer && !killer.dead) { killer.kills++; killer.flash = 0.35; }
+    this.explodeSnake(s);
+    this.burst(s.x, s.y, 30, '#ff8a8a', 280);
+    this.emit('die', s.x, s.y, { isPlayer: s.isPlayer, reason: reason });
+    if (s.isPlayer) this.playerDead = true;
+    else this.queueRespawn(s);
+  }
+
+  /* 球体撞墙 / 边界致死 */
+  killBall(b, reason) {
+    if (b.dead) return;
+    b.dead = true;
+    this.burst(b.x, b.y, 24, '#ff8a8a', 240);
+    this.emit('die', b.x, b.y, { isPlayer: b.isPlayer, reason: reason });
+    if (b.isPlayer) this.playerDead = true;
+    else this.queueRespawn(b);
+  }
+
+  /* 复活道具：玩家阵亡且有剩余次数时原地满状态重生（无道具消耗，次数已随开局扣减） */
+  revivePlayer() {
+    const p = this.player;
+    if (!p) return;
+    p.revives--;
+    p.dead = false;
+    const pos = this.playerPos();
+    p.x = pos.x; p.y = pos.y;
+    p.dir = p.targetDir = rand(0, TAU);
+    p.dashT = 0; p.dashCd = 0; p.boostT = 0; p.spitCd = 0;
+    p.flash = 0.8; p.mercy = 3;          // 复活短暂无敌
+    if (p.type === 'ball') {
+      p.mass = CFG.ballStartMass; p.peak = p.mass; p.startMass = p.mass;
+    } else {
+      p.segments = CFG.snakeStartSeg; p.pending = 0;
+      p.trail = [{ x: p.x, y: p.y }];
+      p.trailLen = 0;
+      for (let i = 1; i <= p.segments + 2; i++) {
+        p.trail.push({ x: p.x - Math.cos(p.dir) * p.spacing * i, y: p.y - Math.sin(p.dir) * p.spacing * i });
+        p.trailLen += p.spacing;
+      }
+      p.updateBody();
+      p.startMass = p.totalMass; p.peak = p.startMass;
+    }
+    this.burst(p.x, p.y, 34, '#9effd0', 300);
+    this.emit('revive', p.x, p.y, { left: p.revives });
+    if (this.onRevive) this.onRevive(p.revives);
+  }
+
+  cutSnake(s, idx, attacker, force) {
+    if (s.dead) return;
+    if (force) {
+      if (idx < 4) idx = 4;
+    } else {
+      // 只允许撞断"可断区"（头部后方 CFG.selfCutIdx 节起），且每帧每蛇最多断一次
+      const minIdx = Math.max(4, Math.min(CFG.selfCutIdx, Math.floor(s.segments * 0.75)));
+      if (idx < minIdx) return;
+    }
+    if (s.lastCutFrame === this.frame) return;
+    s.lastCutFrame = this.frame;
+    const cut = s.segments - idx;
+    if (cut <= 0) return;
+    const pts = s.body.slice(idx);
+    const cutPos = pts.length ? pts[0] : { x: s.x, y: s.y };
+    const cutMass = cut * CFG.snakeSegMass;
+    // 断裂部分化作金色能量豆
+    const per = pts.length ? Math.max(1, Math.floor(cut / pts.length)) : 1;
+    const n = Math.min(cut, 46);
+    for (let i = 0; i < n; i++) {
+      const from = Math.min(pts.length - 1, Math.floor(i * pts.length / n));
+      const base = pts[from] || cutPos;
+      this.spawnFood(base.x + rand(-20, 20), base.y + rand(-20, 20), CFG.foodMass * per, 1);
+    }
+    s.segments = idx;
+    s.pending = 0;
+    s.flash = 0.3;
+    s.mercy = 1.6;                      // 断尾后短暂保护，防止被连续撕咬
+    if (attacker && !attacker.dead) {   // 撞击者被弹开
+      const a = Math.atan2(attacker.y - s.y, attacker.x - s.x);
+      attacker.x += Math.cos(a) * 26; attacker.y += Math.sin(a) * 26;
+    }
+    if (attacker && !attacker.dead) {
+      attacker.kills++; attacker.flash = 0.3;
+      const rate = attacker.type === 'ball' ? 0.45 : 0.4;
+      if (attacker.type === 'ball') attacker.addMass(cutMass * rate);
+      else attacker.addMass(cutMass * rate);
+    }
+    this.burst(cutPos.x, cutPos.y, 18, '#9effd0', 200);
+    this.emit('cut', s.x, s.y, { byPlayer: attacker ? attacker.isPlayer : false });
+    // 截断后拖尾收缩
+    this.trimTrail(s);
+    this.updateBodyOf(s);
+    // 剩余体节不足以存活：由撞击者完成吞噬（更符合"被吃掉"的直觉）
+    if (s.segments < CFG.snakeMinSeg) {
+      if (attacker && !attacker.dead) this.eatEntity(attacker, s);
+      else this.killSnake(s, null, 'broken');
+    }
+  }
+  updateBodyOf(s) { s.updateBody(); }
+  trimTrail(s) {
+    const need = (s.segments + 3) * s.spacing + 90;
+    let guard = 0;
+    while (s.trailLen > need && s.trail.length > 3 && guard++ < 400) {
+      const p0 = s.trail[0], p1 = s.trail[1];
+      const seg = dist(p0.x, p0.y, p1.x, p1.y);
+      if (s.trailLen - seg < need) break;
+      s.trailLen -= seg; s.trail.shift();
+    }
+  }
+
+  explodeSnake(s) {
+    const pts = s.body && s.body.length ? s.body : [];
+    const total = s.segments;
+    const n = Math.min(pts.length, 60);
+    if (!n) { this.spawnFood(s.x, s.y, CFG.foodMass * total, 1); return; }
+    const per = Math.max(1, total / n);
+    for (let i = 0; i < n; i++) {
+      this.spawnFood(pts[i].x + rand(-14, 14), pts[i].y + rand(-14, 14), CFG.foodMass * per, 1);
+    }
+  }
+
+  queueRespawn(e) {
+    this.respawns.push({ type: e.type, at: CFG.respawnDelay, name: e.name, skinId: e.skinId });
+  }
+
+  /* --- 刺球 / 栅栏 --- */
+  updateObstacles() {
+    // 球
+    for (let i = 0; i < this.balls.length; i++) {
+      const b = this.balls[i];
+      if (b.dead) continue;
+      // 刺球
+      for (let j = 0; j < this.thorns.length; j++) {
+        const t = this.thorns[j];
+        const d = dist(b.x, b.y, t.x, t.y);
+        if (d >= b.r + t.r) continue;
+        // 弹开
+        const a = Math.atan2(b.y - t.y, b.x - t.x);
+        const push = b.r + t.r - d + 12;
+        b.x += Math.cos(a) * push; b.y += Math.sin(a) * push;
+        b.targetDir = a + rand(-0.4, 0.4);
+        if (b.thornCd <= 0) {
+          b.thornCd = 1.6;
+          if (b.mass > 25) {
+            const loss = Math.min(b.mass * 0.16, b.mass - 25);
+            b.mass -= loss;
+            if (loss > 0.5) {
+              const n = clamp(Math.round(loss / 2), 3, 14);
+              for (let k = 0; k < n; k++) {
+                const aa = rand(0, TAU), rr = rand(b.r + 34, b.r + 140);
+                this.spawnFood(b.x + Math.cos(aa) * rr, b.y + Math.sin(aa) * rr, loss / n, 1);
+              }
+              this.burst(t.x, t.y, 12, '#ff8a6a', 160);
+              if (b.isPlayer) this.emit('thorn', b.x, b.y, 1);
+            }
+          }
+        }
+        break;   // 一帧一个刺球足够
+      }
+      // 栅栏
+      for (let j = 0; j < this.fences.length; j++) {
+        const f = this.fences[j];
+        const d = segDist(b.x, b.y, f.x1, f.y1, f.x2, f.y2);
+        if (d >= b.r + f.w) continue;
+        const cp = closestOnSeg(b.x, b.y, f.x1, f.y1, f.x2, f.y2);
+        const nx = b.x - cp.x, ny = b.y - cp.y;
+        const nl = Math.hypot(nx, ny) || 1;
+        const push = b.r + f.w - d + 6;
+        b.x += nx / nl * push; b.y += ny / nl * push;
+        b.targetDir = Math.atan2(ny, nx);
+      }
+    }
+    // 蛇（头 + 身体）
+    for (let i = 0; i < this.snakes.length; i++) {
+      const s = this.snakes[i];
+      if (s.dead) continue;
+      // 栅栏：挡头（不致死）
+      for (let j = 0; j < this.fences.length; j++) {
+        const f = this.fences[j];
+        const d = segDist(s.x, s.y, f.x1, f.y1, f.x2, f.y2);
+        if (d >= s.r + f.w) continue;
+        const cp = closestOnSeg(s.x, s.y, f.x1, f.y1, f.x2, f.y2);
+        const nx = s.x - cp.x, ny = s.y - cp.y;
+        const nl = Math.hypot(nx, ny) || 1;
+        const push = s.r + f.w - d + 6;
+        s.x += nx / nl * push; s.y += ny / nl * push;
+        s.targetDir = Math.atan2(ny, nx) + rand(-0.5, 0.5);
+      }
+      // 刺球：截断
+      for (let j = 0; j < this.thorns.length; j++) {
+        const t = this.thorns[j];
+        const hd = dist(s.x, s.y, t.x, t.y);
+        if (hd < s.r + t.r) {
+          if (s.mercy <= 0) {
+            // 头部撞上：断掉后半段（保留约前 45%）
+            const cutIdx = Math.max(4, Math.floor(s.segments * 0.45));
+            this.cutSnake(s, cutIdx, null, true);
+            if (s.dead) break;
+          }
+          const a = Math.atan2(s.y - t.y, s.x - t.x);
+          const push = s.r + t.r - hd + 12;
+          s.x += Math.cos(a) * push; s.y += Math.sin(a) * push;
+          s.targetDir = a + rand(-0.6, 0.6);
+          continue;
+        }
+        if (s.mercy > 0 || s.dead) continue;
+        // 身体撞上：从被撞节起断
+        const bd = s.body;
+        for (let k = 3; k < bd.length; k++) {
+          if (dist2(bd[k].x, bd[k].y, t.x, t.y) < Math.pow(s.bodyR + t.r, 2)) {
+            this.cutSnake(s, k, null, true);
+            break;
+          }
+        }
+        if (s.dead) break;
+      }
+    }
+  }
+
+  /* --- 隐藏房间 --- */
+  // 某实体是否正位于某个已开放房间的"隐形通道"弧段（边界外表不变，但可穿过红圈）
+  inGateSector(ent) {
+    const d = Math.hypot(ent.x, ent.y);
+    if (d < 200) return false;
+    const ea = Math.atan2(ent.y, ent.x);
+    for (let i = 0; i < this.rooms.length; i++) {
+      const rm = this.rooms[i];
+      if (rm.state === 'hidden') continue;             // 未开放 → 通道关闭
+      if (!rm.real) continue;                          // 假房间：边界不失效，靠近即死
+      if (Math.abs(angDiff(ea, rm.angle)) < rm.gateW) return true;
+    }
+    return false;
+  }
+  updateRooms(dt) {
+    for (let i = 0; i < this.rooms.length; i++) {
+      const rm = this.rooms[i];
+      if (rm.state === 'hidden') {
+        rm.openAt -= dt;
+        if (rm.openAt <= 0) {
+          rm.state = 'open';
+          for (let k = 0; k < CFG.roomFood; k++) {
+            const a = rand(0, TAU), rr = Math.sqrt(Math.random()) * rm.r * 0.85;
+            this.spawnFood(rm.x + Math.cos(a) * rr, rm.y + Math.sin(a) * rr, 1.6, 2);
+          }
+          this.burst(rm.x, rm.y, 26, '#ffd24a', 260);
+          this.emit('room', rm.x, rm.y, 1);
+        }
+      } else if (rm.state === 'open') {
+        rm.openT -= dt;
+        if (rm.openT <= 0) rm.state = 'done';
+      }
+    }
+  }
+
+  /* --- AI 追击管理 --- */
+  updateHunt(dt) {
+    const pl = this.player;
+    if (!pl || pl.dead || this.demo) return;
+    const hunting = [];
+    for (let i = 0; i < this.balls.length; i++) {
+      const e = this.balls[i];
+      if (e.isPlayer || e.dead) continue;
+      if (e.huntBan > 0) e.huntBan -= dt;
+      const dd = dist(e.x, e.y, pl.x, pl.y);
+      const toward = Math.abs(angDiff(e.dir, Math.atan2(pl.y - e.y, pl.x - e.x))) < 0.6;
+      if (dd < CFG.huntSense && toward) {
+        e.huntT += dt;
+        if (e.huntT > e.huntLimit) { e.huntBan = CFG.huntBanT; e.huntT = 0; }
+        else hunting.push(e);
+      } else {
+        e.huntT = Math.max(0, e.huntT - dt * 0.4);
+      }
+    }
+    for (let i = 0; i < this.snakes.length; i++) {
+      const e = this.snakes[i];
+      if (e.isPlayer || e.dead) continue;
+      if (e.huntBan > 0) e.huntBan -= dt;
+      const dd = dist(e.x, e.y, pl.x, pl.y);
+      const toward = Math.abs(angDiff(e.dir, Math.atan2(pl.y - e.y, pl.x - e.x))) < 0.6;
+      if (dd < CFG.huntSense && toward) {
+        e.huntT += dt;
+        if (e.huntT > e.huntLimit) { e.huntBan = CFG.huntBanT; e.huntT = 0; }
+        else hunting.push(e);
+      } else {
+        e.huntT = Math.max(0, e.huntT - dt * 0.4);
+      }
+    }
+    // 同时追击人数超限：ban 掉追得最久的
+    if (hunting.length > CFG.huntMaxCount) {
+      hunting.sort(function (a, b) { return b.huntT - a.huntT; });
+      for (let i = 0; i < hunting.length - CFG.huntMaxCount; i++) {
+        hunting[i].huntBan = CFG.huntBanT;
+        hunting[i].huntT = 0;
+      }
+    }
+  }
+
+  /* --- 主更新 --- */
+  update(dt) {
+    if (this.over) return;
+    this.time -= dt;
+
+    // 1. 移动
+    for (let i = 0; i < this.balls.length; i++) {
+      const b = this.balls[i];
+      if (!b.dead) b.update(dt, this);
+    }
+    for (let i = 0; i < this.snakes.length; i++) {
+      const s = this.snakes[i];
+      if (!s.dead) s.update(dt, this);
+    }
+
+    // 2. 障碍（刺球 / 栅栏）
+    this.updateObstacles();
+
+    // 3. 网格
+    this.foodGrid.clear();
+    for (let i = 0; i < this.foods.length; i++) {
+      const f = this.foods[i];
+      if (!f.dead) this.foodGrid.insert(f.x, f.y, f);
+    }
+    this.nodeGrid.clear();
+    for (let i = 0; i < this.balls.length; i++) {
+      const b = this.balls[i];
+      if (!b.dead) this.nodeGrid.insert(b.x, b.y, { kind: 'ball', ref: b, x: b.x, y: b.y, r: b.r });
+    }
+    for (let i = 0; i < this.snakes.length; i++) {
+      const s = this.snakes[i];
+      if (s.dead) continue;
+      this.nodeGrid.insert(s.x, s.y, { kind: 'head', ref: s, x: s.x, y: s.y, r: s.r });
+      const bd = s.body;
+      s.bodyNodes = [];
+      for (let j = 0; j < bd.length; j++) {
+        const bn = { kind: 'body', ref: s, idx: j, x: bd[j].x, y: bd[j].y, r: s.bodyR };
+        s.bodyNodes.push(bn);
+        this.nodeGrid.insert(bd[j].x, bd[j].y, bn);
+      }
+    }
+
+    // 4. 碰撞
+    this.collide();
+
+    // 5. 隐藏房间 / AI 追击
+    this.updateRooms(dt);
+    this.updateHunt(dt);
+
+    // 6. 清理
+    let k = 0;
+    for (let i = 0; i < this.foods.length; i++) if (!this.foods[i].dead) this.foods[k++] = this.foods[i];
+    this.foods.length = k;
+    k = 0;
+    for (let i = 0; i < this.balls.length; i++) {
+      const b = this.balls[i];
+      if (!b.dead || b.isPlayer) this.balls[k++] = b;   // 保留阵亡玩家用于结算
+    }
+    this.balls.length = k;
+    k = 0;
+    for (let i = 0; i < this.snakes.length; i++) {
+      const s = this.snakes[i];
+      if (!s.dead || s.isPlayer) this.snakes[k++] = s;
+    }
+    this.snakes.length = k;
+    this.fillFood();
+
+    // 7. 粒子
+    k = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) continue;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.94; p.vy *= 0.94;
+      this.particles[k++] = p;
+    }
+    this.particles.length = k;
+
+    // 8. AI 重生
+    for (let i = this.respawns.length - 1; i >= 0; i--) {
+      const r = this.respawns[i];
+      r.at -= dt;
+      if (r.at <= 0) {
+        this.respawns.splice(i, 1);
+        if (r.type === 'ball') this.spawnBall(false, r.name, r.skinId);
+        else this.spawnSnake(false, r.name, r.skinId);
+      }
+    }
+
+    // 9. 结束判定（复活道具优先）
+    if (this.playerDead) {
+      if (this.player && this.player.revives > 0) {
+        this.revivePlayer();
+        this.playerDead = false;
+      } else {
+        this.over = true;
+        if (this.onPlayerDead) this.onPlayerDead('dead');
+      }
+    } else if (this.time <= 0) {
+      this.time = 0;
+      this.over = true;
+      if (this.onTimeUp) this.onTimeUp();
+    }
+  }
+
+  collide() {
+    this.frame = (this.frame || 0) + 1;
+    const attackers = [];
+    for (let i = 0; i < this.balls.length; i++) if (!this.balls[i].dead) attackers.push(this.balls[i]);
+    for (let i = 0; i < this.snakes.length; i++) if (!this.snakes[i].dead) attackers.push(this.snakes[i]);
+
+    for (let a = 0; a < attackers.length; a++) {
+      const A = attackers[a];
+      if (A.dead) continue;
+      const ar = A.r;
+      // 吃食物
+      const fc = this.foodGrid.query(A.x, A.y, ar + 14);
+      for (let i = 0; i < fc.length; i++) {
+        const f = fc[i];
+        if (f.dead) continue;
+        if (dist2(A.x, A.y, f.x, f.y) < (ar + f.r) * (ar + f.r)) this.eatFood(A, f);
+      }
+      // 与其他单位（每帧重建去重表，避免历史帧残留）
+      const seen = {};
+      const nc = this.nodeGrid.query(A.x, A.y, ar + 6);
+      for (let i = 0; i < nc.length; i++) {
+        if (A.dead) break;
+        const n = nc[i];
+        const B = n.ref;
+        if (B === A || B.dead || B.mercy > 0) continue;
+        const d = dist(A.x, A.y, n.x, n.y);
+        if (d >= ar + n.r) continue;                 // 未接触
+        if (n.kind === 'body') {
+          if (d >= ar + n.r * CFG.bodyGap) continue;
+          if (A.type === 'snake') {
+            if (B === A) {
+              if (n.idx >= 4) { this.killSnake(A, null, 'self'); break; }
+            } else if (ar > n.r * CFG.eatRatio) {
+              this.cutSnake(B, n.idx, A);          // 大蛇头才能咬断他蛇
+            } else {
+              const ang = Math.atan2(A.y - n.y, A.x - n.x);
+              A.x += Math.cos(ang) * 6; A.y += Math.sin(ang) * 6;
+            }
+          } else {
+            if (ar > B.r * CFG.eatRatio) {
+              this.cutSnake(B, n.idx, A);          // 只有更大的球能撞断蛇身
+            } else {
+              const ang = Math.atan2(A.y - n.y, A.x - n.x);
+              A.x += Math.cos(ang) * 6; A.y += Math.sin(ang) * 6;
+            }
+          }
+        } else {
+          if (seen[B.id]) continue;
+          seen[B.id] = 1;
+          const br = n.r;
+          const aBig = (A.type === 'snake') ? (ar > br * CFG.headEatRatio) : (ar > br * CFG.eatRatio);
+          const bBig = (B.type === 'snake') ? (br > ar * CFG.headEatRatio) : (br > ar * CFG.eatRatio);
+          if (aBig) {
+            if (d < Math.max(ar, br) - 0.32 * Math.min(ar, br)) this.eatEntity(A, B);
+          } else if (bBig) {
+            if (d < Math.max(ar, br) - 0.32 * Math.min(ar, br)) this.eatEntity(B, A);
+          } else {
+            const ang = Math.atan2(A.y - n.y, A.x - n.x);
+            A.x += Math.cos(ang) * 8; A.y += Math.sin(ang) * 8;
+          }
+        }
+      }
+    }
+  }
+
+  /* --- 排行榜 --- */
+  leaderboard() {
+    const list = [];
+    for (let i = 0; i < this.balls.length; i++) {
+      const b = this.balls[i];
+      list.push({ ref: b, name: b.name, type: 'ball', score: b.score, isPlayer: b.isPlayer, dead: false });
+    }
+    for (let i = 0; i < this.snakes.length; i++) {
+      const s = this.snakes[i];
+      list.push({ ref: s, name: s.name, type: 'snake', score: s.score, isPlayer: s.isPlayer, dead: false });
+    }
+    list.sort(function (p, q) { return q.score - p.score; });
+    return list;
+  }
+
+  aliveCount() { return this.balls.length + this.snakes.length; }
+}
+/* ---------------------------- AI 行为 ---------------------------- */
+/* 统一的方向采样评分：向能量豆与猎物靠拢，躲避天敌、墙体、障碍与自己的身体 */
+
+function nearestThreat(ent, w) {
+  const ns = w.nodeGrid.query(ent.x, ent.y, ent.r + 420);
+  let best = null, bd = 1e9;
+  for (let i = 0; i < ns.length; i++) {
+    const n = ns[i];
+    if (n.ref === ent || n.ref.dead) continue;
+    if (n.kind === 'body') continue;
+    const th = (ent.type === 'snake') ? CFG.headEatRatio : CFG.eatRatio;
+    if (n.r <= ent.r * th) continue;
+    const d = dist(ent.x, ent.y, n.x, n.y);
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best ? { n: best, d: bd } : null;
+}
+
+function avoidWall(ent) {
+  const dc = Math.hypot(ent.x, ent.y);
+  const safe = CFG.arenaR - ent.r * 4 - 60;
+  if (dc <= safe) return false;
+  const inward = Math.atan2(-ent.y, -ent.x);
+  const goingOut = Math.cos(ent.dir - inward);
+  if (goingOut < 0.35) {
+    ent.targetDir = inward + rand(-0.4, 0.4);
+    ent.ai.t = 0;
+    return true;
+  }
+  return false;
+}
+
+/* 障碍硬保护：刺球 / 栅栏 */
+function avoidObstacles(ent, w) {
+  // 刺球
+  for (let i = 0; i < w.thorns.length; i++) {
+    const t = w.thorns[i];
+    const d = dist(ent.x, ent.y, t.x, t.y);
+    if (d < t.r + ent.r + 150) {
+      const toThorn = Math.atan2(t.y - ent.y, t.x - ent.x);
+      // 正朝刺球去才闪避
+      if (Math.cos(ent.dir - toThorn) > 0.25) {
+        const away = Math.atan2(ent.y - t.y, ent.x - t.x);
+        ent.targetDir = away + rand(-0.55, 0.55);
+        ent.ai.t = 0;
+        return true;
+      }
+    }
+  }
+  // 栅栏（前方探点）
+  for (let i = 0; i < w.fences.length; i++) {
+    const f = w.fences[i];
+    const fx = ent.x + Math.cos(ent.dir) * (ent.r + 130);
+    const fy = ent.y + Math.sin(ent.dir) * (ent.r + 130);
+    if (segDist(fx, fy, f.x1, f.y1, f.x2, f.y2) < 70) {
+      ent.targetDir = ent.dir + (Math.random() < 0.5 ? 1 : -1) * rand(0.9, 1.7);
+      ent.ai.t = 0;
+      return true;
+    }
+  }
+  return false;
+}
+
+function aiThink(ent, w, dt) {
+  if (ent.dead) return;
+  const isSnake = ent.type === 'snake';
+  const aggr = w.diff.aggr, skill = w.diff.skill;
+
+  // 每帧：墙体 / 障碍硬保护
+  avoidWall(ent) || avoidObstacles(ent, w);
+  // 每帧：蛇的自撞硬保护（前方有自己身体就侧移）
+  if (isSnake) {
+    const fx = ent.x + Math.cos(ent.dir) * (ent.r + ent.bodyR + 34);
+    const fy = ent.y + Math.sin(ent.dir) * (ent.r + ent.bodyR + 34);
+    const bd = ent.body;
+    for (let j = 4; j < bd.length; j++) {
+      if (dist2(fx, fy, bd[j].x, bd[j].y) < Math.pow(ent.r + ent.bodyR + 16, 2)) {
+        ent.targetDir = ent.dir + (Math.random() < 0.5 ? 1 : -1) * rand(0.8, 1.6);
+        ent.ai.t = 0;
+        break;
+      }
+    }
+  }
+
+  // 隐藏房间觅食：偶尔"发现"开放中的房间，前往；每个 AI 一局只能进一次
+  if (ent.ai.room) {
+    const rm = ent.ai.room;
+    if (rm.state === 'hidden') { ent.ai.room = null; }
+    else {
+      const dd = dist(ent.x, ent.y, rm.x, rm.y);
+      if (dd < rm.r * 0.8) {
+        rm.aiSeen[ent.id] = true; rm.aiEntered[ent.id] = true; rm.inCount++; ent.ai.room = null;
+      } else ent.targetDir = Math.atan2(rm.y - ent.y, rm.x - ent.x) + rand(-0.15, 0.15);
+      return;   // 觅食优先
+    }
+  } else if (w.rooms && w.rooms.length) {
+    for (let i = 0; i < w.rooms.length; i++) {
+      const rm = w.rooms[i];
+      if (rm.state === 'hidden') continue;
+      if (!rm.real) continue;                 // 假房间不吸引 AI
+      if (rm.aiEntered[ent.id]) continue;     // 已进过 → 不再来
+      if (rm.inCount >= 3) continue;
+      // 低概率"发现"
+      if (Math.random() < 0.0035) { ent.ai.room = rm; break; }
+    }
+  }
+
+  ent.ai.t -= dt;
+  if (ent.ai.t > 0) return;
+  ent.ai.t = rand(0.11, 0.19);
+
+  const myR = ent.r;
+  // 解除追击期：把玩家从猎物名单里抹掉（天敌仍需躲避）
+  const banPlayer = ent.huntBan > 0 && w.player && !w.player.dead;
+  const N = 12;
+  let bestAng = null, bestScore = -1e9;
+
+  for (let i = 0; i < N; i++) {
+    const ang = ent.dir + (i / N) * TAU;
+    let sc = 0;
+    sc -= Math.abs(angDiff(ent.dir, ang)) * (isSnake ? 7 : 3.2);
+
+    for (let s = 1; s <= 3; s++) {
+      const dd = s * (myR + 120);
+      const px = ent.x + Math.cos(ang) * dd;
+      const py = ent.y + Math.sin(ang) * dd;
+      const wgt = 1 / s;
+
+      // 边界
+      const dc = Math.hypot(px, py);
+      const lim = CFG.arenaR - myR - 30;
+      if (dc > lim) sc -= (isSnake ? 1200 : 300) * wgt * (1 + (dc - lim) / 260);
+
+      // 食物
+      const fs = w.foodGrid.query(px, py, 130);
+      for (let j = 0; j < fs.length; j++) {
+        const f = fs[j];
+        if (f.dead) continue;
+        const d = dist(px, py, f.x, f.y);
+        if (d < 130) sc += (16 / (1 + d / 55)) * wgt;
+      }
+
+      // 其他单位
+      const ns = w.nodeGrid.query(px, py, 210);
+      for (let j = 0; j < ns.length; j++) {
+        const n = ns[j];
+        const O = n.ref;
+        if (O === ent) {
+          if (isSnake && n.kind === 'body' && n.idx >= 3) {
+            const d = dist(px, py, n.x, n.y);
+            if (d < myR + n.r + 40) sc -= 800 * wgt;
+          }
+          continue;
+        }
+        if (O.dead) continue;
+        const d = dist(px, py, n.x, n.y);
+        if (d > 260) continue;
+        const f = 1 / (1 + d / 90);
+        if (n.kind === 'body') {
+          if (banPlayer && O.isPlayer) continue;         // 解除期：不追玩家蛇身
+          const ownerR = O.r;
+          if (myR > ownerR * CFG.eatRatio) sc += 55 * aggr * f * wgt;   // 我比它大：撞断有收益
+          else sc -= 260 * f * wgt;                                     // 它比我大：绕开它的身体
+          if (isSnake) sc -= 26 * f * wgt;
+        } else if (n.r > myR * CFG.eatRatio) {
+          sc -= 700 * f * wgt * (isSnake ? 1.35 : 1); // 天敌
+        } else if (myR > n.r * CFG.eatRatio) {
+          if (banPlayer && O.isPlayer) continue;         // 解除期：玩家不算猎物
+          sc += 300 * aggr * f * wgt;                 // 猎物
+        } else {
+          sc -= 45 * f * wgt;
+        }
+      }
+    }
+    sc += rand(0, 34) * (1 - skill);
+    if (sc > bestScore) { bestScore = sc; bestAng = ang; }
+  }
+
+  if (bestAng !== null) ent.targetDir = bestAng;
+
+  // 冲刺决策
+  if (ent.dashCd <= 0) {
+    const th = nearestThreat(ent, w);
+    if (th && th.d < myR * 5 + 170 && Math.random() < 0.55 * skill) ent.tryDash();
+    else if (th === null && Math.random() < 0.006 * aggr) ent.tryDash();
+  }
+}
+/* ---------------------------- 贴图与渲染 ---------------------------- */
+function hexToRgb(h) {
+  const s = h.replace('#', '');
+  return { r: parseInt(s.substr(0, 2), 16), g: parseInt(s.substr(2, 2), 16), b: parseInt(s.substr(4, 2), 16) };
+}
+function mixHex(a, b, t) {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  const r = Math.round(lerp(A.r, B.r, t)), g = Math.round(lerp(A.g, B.g, t)), bl = Math.round(lerp(A.b, B.b, t));
+  return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
+function hsl(h, s, l) { return 'hsl(' + (h % 360) + ',' + s + '%,' + l + '%)'; }
+
+const spriteCache = {};
+function makeCanvas(n) {
+  const c = document.createElement('canvas');
+  c.width = n; c.height = n;
+  return c;
+}
+/* 球体贴图 */
+function ballSprite(skin) {
+  const key = 'b_' + skin.id;
+  if (spriteCache[key]) return spriteCache[key];
+  const N = 256, c = makeCanvas(N), x = c.getContext('2d');
+  const R = N / 2;
+  const g = x.createRadialGradient(R * 0.68, R * 0.62, R * 0.05, R, R, R);
+  g.addColorStop(0, skin.c1);
+  g.addColorStop(0.55, mixHex(skin.c1, skin.c2, 0.55));
+  g.addColorStop(1, skin.c2);
+  x.beginPath(); x.arc(R, R, R - 3, 0, TAU); x.fillStyle = g; x.fill();
+  // 图案
+  x.save();
+  x.beginPath(); x.arc(R, R, R - 3, 0, TAU); x.clip();
+  if (skin.pat === 'wave') {
+    x.strokeStyle = 'rgba(255,255,255,.30)'; x.lineWidth = 9;
+    for (let i = 0; i < 2; i++) {
+      x.beginPath();
+      for (let t = 0; t <= N; t += 6) {
+        const yy = R * (0.75 + i * 0.42) + Math.sin(t / 26 + i * 2) * 13;
+        if (t === 0) x.moveTo(t, yy); else x.lineTo(t, yy);
+      }
+      x.stroke();
+    }
+  } else if (skin.pat === 'crack') {
+    x.strokeStyle = 'rgba(255,220,150,.55)'; x.lineWidth = 7; x.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.257 + 0.4;
+      x.beginPath(); x.moveTo(R, R);
+      x.lineTo(R + Math.cos(a) * R * 0.55, R + Math.sin(a) * R * 0.55);
+      x.lineTo(R + Math.cos(a + 0.3) * R * 0.92, R + Math.sin(a + 0.3) * R * 0.92);
+      x.stroke();
+    }
+  } else if (skin.pat === 'leaf') {
+    x.fillStyle = 'rgba(255,255,255,.22)';
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9, rr = R * (0.25 + (i % 3) * 0.22);
+      x.beginPath(); x.ellipse(R + Math.cos(a) * rr, R + Math.sin(a) * rr, 22, 11, a, 0, TAU); x.fill();
+    }
+  } else if (skin.pat === 'star') {
+    x.fillStyle = 'rgba(255,255,255,.75)';
+    for (let i = 0; i < 16; i++) {
+      const a = rand(0, TAU), rr = rand(0, R * 0.85), s = rand(1.2, 3.2);
+      x.beginPath(); x.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, s, 0, TAU); x.fill();
+    }
+  } else if (skin.pat === 'ring') {
+    x.strokeStyle = 'rgba(255,255,255,.45)'; x.lineWidth = 6;
+    x.beginPath(); x.arc(R, R, R * 0.62, 0, TAU); x.stroke();
+    x.lineWidth = 3; x.beginPath(); x.arc(R, R, R * 0.38, 0, TAU); x.stroke();
+  } else if (skin.pat === 'rainbow') {
+    for (let i = 0; i < 12; i++) {
+      x.fillStyle = hsl(i * 30, 95, 62);
+      x.beginPath();
+      x.moveTo(R, R);
+      x.arc(R, R, R, i * TAU / 12, (i + 1) * TAU / 12);
+      x.closePath(); x.globalAlpha = 0.55; x.fill();
+    }
+    x.globalAlpha = 1;
+  }
+  // 高光
+  const hg = x.createRadialGradient(R * 0.62, R * 0.52, 2, R * 0.62, R * 0.52, R * 0.6);
+  hg.addColorStop(0, 'rgba(255,255,255,.55)');
+  hg.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = hg; x.beginPath(); x.arc(R, R, R - 3, 0, TAU); x.fill();
+  x.restore();
+  // 描边
+  x.beginPath(); x.arc(R, R, R - 3, 0, TAU);
+  x.strokeStyle = skin.glow; x.lineWidth = 5; x.stroke();
+  spriteCache[key] = c;
+  return c;
+}
+/* 蛇身体节贴图（k/K 表示从尾到头的渐变位置） */
+function segSprite(skin, k, K) {
+  const key = 's_' + skin.id + '_' + k + '_' + K;
+  if (spriteCache[key]) return spriteCache[key];
+  const N = 128, c = makeCanvas(N), x = c.getContext('2d');
+  const R = N / 2;
+  let t = K > 1 ? k / (K - 1) : 0;
+  let base;
+  if (skin.pat === 'rainbow') base = hsl(k * (360 / K), 90, 58);
+  else if (skin.pat === 'stripe') base = (k % 2 === 0) ? mixHex(skin.c1, skin.c2, t * 0.8) : mixHex(skin.c2, skin.c1, 0.35);
+  else base = mixHex(skin.c1, skin.c2, t * 0.85);
+  const g = x.createRadialGradient(R * 0.65, R * 0.6, 2, R, R, R);
+  g.addColorStop(0, base);
+  g.addColorStop(1, mixHex(skin.c2, '#000000', 0.25));
+  x.beginPath(); x.arc(R, R, R - 2, 0, TAU); x.fillStyle = g; x.fill();
+  if (skin.pat === 'scale') {
+    x.fillStyle = 'rgba(255,255,255,.18)';
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.3, rr = R * 0.42;
+      x.beginPath(); x.arc(R + Math.cos(a) * rr, R + Math.sin(a) * rr, R * 0.17, 0, TAU); x.fill();
+    }
+  }
+  const hg = x.createRadialGradient(R * 0.6, R * 0.5, 1, R * 0.6, R * 0.5, R * 0.62);
+  hg.addColorStop(0, 'rgba(255,255,255,.42)');
+  hg.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = hg; x.beginPath(); x.arc(R, R, R - 2, 0, TAU); x.fill();
+  x.beginPath(); x.arc(R, R, R - 2, 0, TAU);
+  x.strokeStyle = 'rgba(255,255,255,.16)'; x.lineWidth = 3; x.stroke();
+  spriteCache[key] = c;
+  return c;
+}
+/* 刺球贴图 */
+function thornSprite() {
+  if (spriteCache.thorn) return spriteCache.thorn;
+  const N = 160, c = makeCanvas(N), x = c.getContext('2d');
+  const R = N / 2;
+  const g = x.createRadialGradient(R * 0.6, R * 0.55, 4, R, R, R * 0.62);
+  g.addColorStop(0, '#a0344c');
+  g.addColorStop(0.7, '#5c1226');
+  g.addColorStop(1, '#2a0610');
+  // 尖刺
+  x.fillStyle = '#8a2038';
+  for (let i = 0; i < 11; i++) {
+    const a = i * TAU / 11 + 0.2;
+    x.beginPath();
+    x.moveTo(R + Math.cos(a - 0.13) * R * 0.52, R + Math.sin(a - 0.13) * R * 0.52);
+    x.lineTo(R + Math.cos(a) * R * 0.94, R + Math.sin(a) * R * 0.94);
+    x.lineTo(R + Math.cos(a + 0.13) * R * 0.52, R + Math.sin(a + 0.13) * R * 0.52);
+    x.closePath(); x.fill();
+  }
+  x.beginPath(); x.arc(R, R, R * 0.55, 0, TAU); x.fillStyle = g; x.fill();
+  x.strokeStyle = 'rgba(255,120,150,.5)'; x.lineWidth = 4;
+  x.beginPath(); x.arc(R, R, R * 0.55, 0, TAU); x.stroke();
+  spriteCache.thorn = c;
+  return c;
+}
+/* 菜单皮肤预览 */
+function drawSkinPreview(cv, faction, skin) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = cv.clientWidth || 52, h = cv.clientHeight || 52;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const x = cv.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  if (faction === 'ball') {
+    const sp = ballSprite(skin);
+    x.drawImage(sp, 3, 3, w - 6, h - 6);
+  } else {
+    const K = 7;
+    for (let i = K - 1; i >= 0; i--) {
+      const sp = segSprite(skin, i, K);
+      const px = 6 + i * (w - 12) / K * 0.92;
+      const py = h * 0.62 - Math.sin(i * 0.9) * h * 0.16;
+      const r = (w - 12) / K * 0.95;
+      x.drawImage(sp, px, py - r * 0.5, r, r);
+    }
+    const sp = segSprite(skin, K - 1, K);
+    const r = (w - 12) / K * 1.35;
+    x.drawImage(sp, 4 + (K - 1) * (w - 12) / K * 0.92 - r * 0.18, h * 0.5 - r * 0.55, r, r);
+  }
+}
+
+/* ---------------------------- 渲染器 ---------------------------- */
+const View = {
+  cv: null, ctx: null, W: 0, H: 0, dpr: 1,
+  cam: { x: 0, y: 0, zoom: 1, tz: 1 },
+  init(cv) {
+    this.cv = cv; this.ctx = cv.getContext('2d');
+    this.resize();
+  },
+  resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = this.cv.clientWidth || window.innerWidth;
+    const h = this.cv.clientHeight || window.innerHeight;
+    this.dpr = dpr; this.W = w; this.H = h;
+    this.cv.width = Math.floor(w * dpr);
+    this.cv.height = Math.floor(h * dpr);
+  },
+  updateCam(p, dt) {
+    if (!p) return;
+    const c = this.cam;
+    const viewHalf = clamp(p.r * 8 + 300, 420, 1600);
+    const ref = (this.W + this.H) * 0.36;
+    c.tz = clamp(ref / 2 / viewHalf, 0.16, 1.6);
+    c.zoom = lerp(c.zoom, c.tz, 1 - Math.pow(0.001, dt));
+    c.x = lerp(c.x, p.x, 1 - Math.pow(0.0006, dt));
+    c.y = lerp(c.y, p.y, 1 - Math.pow(0.0006, dt));
+  },
+  snapCam(p) {
+    if (!p) return;
+    const c = this.cam;
+    const viewHalf = clamp(p.r * 8 + 300, 420, 1600);
+    const ref = (this.W + this.H) * 0.36;
+    c.zoom = c.tz = clamp(ref / 2 / viewHalf, 0.16, 1.6);
+    c.x = p.x; c.y = p.y;
+  },
+  /* 玩家能否吃掉该目标（按玩家类型的阈值） */
+  canEat(w, ent) {
+    const p = w.player;
+    if (!p || p.dead || p === ent || ent.dead) return false;
+    const th = p.type === 'snake' ? CFG.headEatRatio : CFG.eatRatio;
+    return p.r > ent.r * th;
+  },
+  draw(w) {
+    const ctx = this.ctx, c = this.cam, z = c.zoom;
+    const theme = (w && w.mapDef) ? w.mapDef : MAPS[0];
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.W, this.H);
+    // 背景
+    const bg = ctx.createLinearGradient(0, 0, 0, this.H);
+    bg.addColorStop(0, theme.bg[0]); bg.addColorStop(1, theme.bg[1]);
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, this.W, this.H);
+
+    ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z,
+      this.dpr * (this.W / 2 - c.x * z), this.dpr * (this.H / 2 - c.y * z));
+
+    const vx0 = c.x - this.W / 2 / z, vx1 = c.x + this.W / 2 / z;
+    const vy0 = c.y - this.H / 2 / z, vy1 = c.y + this.H / 2 / z;
+
+    // 网格
+    const step = 150;
+    ctx.strokeStyle = theme.grid;
+    ctx.lineWidth = 1 / z;
+    ctx.beginPath();
+    for (let gx = Math.floor(vx0 / step) * step; gx < vx1; gx += step) { ctx.moveTo(gx, vy0); ctx.lineTo(gx, vy1); }
+    for (let gy = Math.floor(vy0 / step) * step; gy < vy1; gy += step) { ctx.moveTo(vx0, gy); ctx.lineTo(vx1, gy); }
+    ctx.stroke();
+
+    // 边界
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(vx0 - 200, vy0 - 200, (vx1 - vx0) + 400, (vy1 - vy0) + 400);
+    ctx.arc(0, 0, CFG.arenaR, 0, TAU, true);
+    ctx.fillStyle = 'rgba(2,4,10,.72)';
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, CFG.arenaR, 0, TAU);
+    ctx.strokeStyle = theme.edge; ctx.lineWidth = 6 / z; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, CFG.arenaR - 14 / z, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,110,140,.25)'; ctx.lineWidth = 3 / z; ctx.stroke();
+
+    if (!w) return;
+
+    // 隐藏房间（开放时才可见）
+    if (w.rooms) {
+      const now = performance.now() / 1000;
+      for (let i = 0; i < w.rooms.length; i++) {
+        const rm = w.rooms[i];
+        if (rm.state === 'hidden') continue;
+        const rr = rm.r;
+        if (rm.x + rr < vx0 - 40 || rm.x - rr > vx1 + 40 || rm.y + rr < vy0 - 40 || rm.y - rr > vy1 + 40) continue;
+        if (rm.state === 'open') {
+          const pulse = 0.5 + Math.sin(now * 2.2) * 0.2;
+          ctx.beginPath(); ctx.arc(rm.x, rm.y, rr, 0, TAU);
+          ctx.fillStyle = 'rgba(255,210,74,' + (0.05 + pulse * 0.05).toFixed(3) + ')';
+          ctx.fill();
+          ctx.beginPath(); ctx.arc(rm.x, rm.y, rr, 0, TAU);
+          ctx.strokeStyle = 'rgba(255,210,74,' + (0.35 + pulse * 0.25).toFixed(3) + ')';
+          ctx.lineWidth = 4 / z; ctx.setLineDash([18 / z, 14 / z]); ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          // done：极淡残圈
+          ctx.beginPath(); ctx.arc(rm.x, rm.y, rr, 0, TAU);
+          ctx.strokeStyle = 'rgba(255,210,74,.10)';
+          ctx.lineWidth = 2 / z; ctx.stroke();
+        }
+      }
+    }
+
+    // 栅栏
+    if (w.fences) {
+      for (let i = 0; i < w.fences.length; i++) {
+        const f = w.fences[i];
+        if (Math.max(f.x1, f.x2) < vx0 - 40 || Math.min(f.x1, f.x2) > vx1 + 40) continue;
+        if (Math.max(f.y1, f.y2) < vy0 - 40 || Math.min(f.y1, f.y2) > vy1 + 40) continue;
+        ctx.beginPath();
+        ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2);
+        ctx.strokeStyle = 'rgba(150,235,235,.75)'; ctx.lineWidth = f.w * 2 / z * 0.9; ctx.lineCap = 'round'; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2);
+        ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3 / z; ctx.stroke();
+        for (const e of [[f.x1, f.y1], [f.x2, f.y2]]) {
+          ctx.beginPath(); ctx.arc(e[0], e[1], f.w * 0.5, 0, TAU);
+          ctx.fillStyle = 'rgba(200,255,255,.9)'; ctx.fill();
+        }
+      }
+    }
+
+    // 食物
+    const fs = w.foods;
+    for (let i = 0; i < fs.length; i++) {
+      const f = fs[i];
+      if (f.dead) continue;
+      if (f.x < vx0 - 20 || f.x > vx1 + 20 || f.y < vy0 - 20 || f.y > vy1 + 20) continue;
+      const pulse = 1 + Math.sin(performance.now() / 400 + f.ph) * 0.12;
+      if (f.sp) {
+        // 特殊豆：金色 + 光环
+        const glow = f.sp === 2 ? 2.1 : 1.7;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * pulse * glow, 0, TAU);
+        ctx.fillStyle = f.sp === 2 ? 'rgba(255,220,120,.22)' : 'rgba(255,210,74,.16)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * pulse, 0, TAU);
+        ctx.fillStyle = '#ffd24a'; ctx.fill();
+        ctx.beginPath();
+        ctx.arc(f.x - f.r * 0.25, f.y - f.r * 0.25, f.r * 0.34, 0, TAU);
+        ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * pulse, 0, TAU);
+        ctx.fillStyle = hsl(f.hue, 92, 64);
+        ctx.fill();
+      }
+    }
+
+    // 蛇（尾巴 -> 头）
+    for (let i = 0; i < w.snakes.length; i++) {
+      const s = w.snakes[i];
+      if (s.dead) continue;
+      this.drawSnake(ctx, s, z, w);
+    }
+    // 球
+    for (let i = 0; i < w.balls.length; i++) {
+      const b = w.balls[i];
+      if (b.dead) continue;
+      this.drawBall(ctx, b, z, w);
+    }
+    // 玩家置顶
+    if (w.player && !w.player.dead) {
+      if (w.player.type === 'snake') this.drawSnake(ctx, w.player, z, w);
+      else this.drawBall(ctx, w.player, z, w);
+    }
+
+    // 刺球（置顶）
+    if (w.thorns) {
+      const sp = thornSprite();
+      for (let i = 0; i < w.thorns.length; i++) {
+        const t = w.thorns[i];
+        if (t.x + t.r < vx0 - 40 || t.x - t.r > vx1 + 40 || t.y + t.r < vy0 - 40 || t.y - t.r > vy1 + 40) continue;
+        const breathe = 1 + Math.sin(performance.now() / 900 + t.ph) * 0.04;
+        const rr = t.r * breathe;
+        ctx.drawImage(sp, t.x - rr, t.y - rr, rr * 2, rr * 2);
+      }
+    }
+
+    // 粒子
+    for (let i = 0; i < w.particles.length; i++) {
+      const p = w.particles[i];
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU);
+      ctx.fillStyle = p.c; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  /* 可吃目标绿色光圈 */
+  drawEatRing(ctx, x, y, r, z) {
+    ctx.beginPath();
+    ctx.arc(x, y, r + 10 / z, 0, TAU);
+    ctx.strokeStyle = 'rgba(67,227,154,.75)';
+    ctx.lineWidth = 3.5 / z;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, r + 14 / z, 0, TAU);
+    ctx.strokeStyle = 'rgba(67,227,154,.25)';
+    ctx.lineWidth = 2 / z;
+    ctx.stroke();
+  },
+
+  drawBall(ctx, b, z, w) {
+    const skin = getSkin('ball', b.skinId);
+    const sp = ballSprite(skin);
+    const r = b.r;
+    if (b.x + r < -99999) return;
+    if (b.dashT > 0 || b.boostT > 0) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, r * 1.5, 0, TAU);
+      ctx.strokeStyle = b.boostT > 0 ? 'rgba(255,210,74,.6)' : 'rgba(140,230,255,.55)';
+      ctx.lineWidth = 6 / z; ctx.stroke();
+    }
+    ctx.drawImage(sp, b.x - r, b.y - r, r * 2, r * 2);
+    if (b.flash > 0) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, TAU);
+      ctx.fillStyle = 'rgba(255,255,255,' + (b.flash * 0.7).toFixed(3) + ')';
+      ctx.fill();
+    }
+    if (b.mercy > 0) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, r + 8 / z, 0, TAU);
+      ctx.strokeStyle = 'rgba(160,220,255,' + (0.35 + Math.sin(performance.now() / 130) * 0.25).toFixed(3) + ')';
+      ctx.lineWidth = 4 / z; ctx.stroke();
+    }
+    if (b.isPlayer) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, r + 7 / z, 0, TAU);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 / z; ctx.stroke();
+    } else if (w && this.canEat(w, b)) {
+      this.drawEatRing(ctx, b.x, b.y, r, z);
+    }
+    this.label(ctx, b.name, b.x, b.y - r - 12 / z, z, b.isPlayer, b.type);
+  },
+
+  drawSnake(ctx, s, z, w) {
+    const skin = getSkin('snake', s.skinId);
+    const br = s.bodyR, hr = s.r;
+    const K = 8;
+    const bd = s.body;
+    for (let i = bd.length - 1; i >= 0; i--) {
+      const p = bd[i];
+      const k = Math.floor(i / Math.max(1, Math.floor(bd.length / K))) % K;
+      const sp = segSprite(skin, k, K);
+      const rr = br * (1 - i / (bd.length + 6) * 0.28);
+      ctx.drawImage(sp, p.x - rr, p.y - rr, rr * 2, rr * 2);
+    }
+    // 头
+    const sp = segSprite(skin, K - 1, K);
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.dir);
+    if (s.dashT > 0 || s.boostT > 0) {
+      ctx.beginPath(); ctx.arc(-hr * 0.6, 0, hr * 1.3, 0, TAU);
+      ctx.strokeStyle = s.boostT > 0 ? 'rgba(255,210,74,.6)' : 'rgba(160,255,220,.5)';
+      ctx.lineWidth = 5 / z; ctx.stroke();
+    }
+    ctx.drawImage(sp, -hr, -hr, hr * 2, hr * 2);
+    // 眼睛
+    const ex = hr * 0.34, ey = hr * 0.42, er = Math.max(hr * 0.20, 1.6);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex, -ey, er, 0, TAU); ctx.arc(ex, ey, er, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#101820';
+    ctx.beginPath(); ctx.arc(ex + er * 0.35, -ey, er * 0.55, 0, TAU); ctx.arc(ex + er * 0.35, ey, er * 0.55, 0, TAU); ctx.fill();
+    ctx.restore();
+    if (s.flash > 0) {
+      ctx.beginPath(); ctx.arc(s.x, s.y, hr, 0, TAU);
+      ctx.fillStyle = 'rgba(255,255,255,' + (s.flash * 0.7).toFixed(3) + ')'; ctx.fill();
+    }
+    if (s.mercy > 0) {
+      ctx.beginPath(); ctx.arc(s.x, s.y, hr + 8 / z, 0, TAU);
+      ctx.strokeStyle = 'rgba(160,220,255,' + (0.35 + Math.sin(performance.now() / 130) * 0.25).toFixed(3) + ')';
+      ctx.lineWidth = 4 / z; ctx.stroke();
+    }
+    if (s.isPlayer) {
+      ctx.beginPath(); ctx.arc(s.x, s.y, hr + 6 / z, 0, TAU);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 / z; ctx.stroke();
+    } else if (w && this.canEat(w, s)) {
+      this.drawEatRing(ctx, s.x, s.y, hr, z);
+    }
+    this.label(ctx, s.name, s.x, s.y - hr - 12 / z, z, s.isPlayer, s.type);
+  },
+
+  label(ctx, text, x, y, z, isPlayer, type) {
+    const size = 14 / z;
+    ctx.font = (isPlayer ? 700 : 500) + ' ' + size.toFixed(1) + 'px -apple-system,Helvetica,Arial,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3 / z;
+    ctx.strokeStyle = 'rgba(0,0,0,.65)';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = isPlayer ? '#ffffff' : (type === 'snake' ? '#bff5e2' : '#cfe4ff');
+    ctx.fillText(text, x, y);
+  },
+
+  /* 小地图 */
+  drawMini(cv, w) {
+    const x = cv.getContext('2d');
+    const N = cv.width;
+    x.clearRect(0, 0, N, N);
+    const R = N / 2 - 2, k = R / CFG.arenaR;
+    x.beginPath(); x.arc(N / 2, N / 2, R, 0, TAU);
+    x.fillStyle = 'rgba(8,18,40,.75)'; x.fill();
+    x.strokeStyle = 'rgba(120,200,255,.45)'; x.lineWidth = 2; x.stroke();
+    if (!w) return;
+    // 栅栏
+    if (w.fences) {
+      x.strokeStyle = 'rgba(150,235,235,.5)'; x.lineWidth = 1;
+      for (let i = 0; i < w.fences.length; i++) {
+        const f = w.fences[i];
+        x.beginPath();
+        x.moveTo(N / 2 + f.x1 * k, N / 2 + f.y1 * k);
+        x.lineTo(N / 2 + f.x2 * k, N / 2 + f.y2 * k);
+        x.stroke();
+      }
+    }
+    // 刺球（小点）
+    if (w.thorns) {
+      x.fillStyle = 'rgba(255,110,140,.8)';
+      for (let i = 0; i < w.thorns.length; i++) {
+        const t = w.thorns[i];
+        x.beginPath(); x.arc(N / 2 + t.x * k, N / 2 + t.y * k, 2, 0, TAU); x.fill();
+      }
+    }
+    for (let i = 0; i < w.balls.length; i++) {
+      const b = w.balls[i];
+      const s = getSkin('ball', b.skinId);
+      x.beginPath();
+      x.arc(N / 2 + b.x * k, N / 2 + b.y * k, clamp(b.r * k, 1.6, 9), 0, TAU);
+      x.fillStyle = b.isPlayer ? '#ffffff' : s.c1; x.fill();
+    }
+    for (let i = 0; i < w.snakes.length; i++) {
+      const s2 = w.snakes[i];
+      const sk = getSkin('snake', s2.skinId);
+      x.strokeStyle = s2.isPlayer ? '#ffffff' : sk.c1;
+      x.lineWidth = s2.isPlayer ? 2.4 : 1.8;
+      x.beginPath();
+      for (let j = 0; j < s2.body.length; j++) {
+        const p = s2.body[j];
+        const px = N / 2 + p.x * k, py = N / 2 + p.y * k;
+        if (j === 0) x.moveTo(px, py); else x.lineTo(px, py);
+      }
+      x.stroke();
+    }
+    // 视野框
+    const c = this.cam;
+    const hw = this.W / 2 / c.zoom * k, hh = this.H / 2 / c.zoom * k;
+    x.strokeStyle = 'rgba(255,255,255,.5)'; x.lineWidth = 1.2;
+    x.strokeRect(N / 2 + c.x * k - hw, N / 2 + c.y * k - hh, hw * 2, hh * 2);
+  }
+};
+/* ---------------------------- 音效 ---------------------------- */
+const Sound = {
+  ctx: null, on: true, lastEat: 0,
+  init() {
+    if (this.ctx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    } catch (e) { this.ctx = null; }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(freq, dur, type, vol, slide) {
+    if (!this.on || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, slide), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol || 0.14, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.ctx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  },
+  eat(isPlayer) {
+    const now = performance.now();
+    if (now - this.lastEat < 70) return;
+    this.lastEat = now;
+    this.tone(isPlayer ? 880 : 660, 0.07, 'triangle', 0.06);
+  },
+  kill() { this.tone(180, 0.22, 'square', 0.14, 60); },
+  cut() { this.tone(420, 0.14, 'sawtooth', 0.10, 200); },
+  die() { this.tone(300, 0.6, 'sine', 0.20, 60); },
+  dash() { this.tone(620, 0.12, 'triangle', 0.10, 900); },
+  spit() { this.tone(520, 0.12, 'triangle', 0.10, 280); },
+  buy() { this.tone(980, 0.12, 'triangle', 0.12, 1300); },
+  deny() { this.tone(200, 0.14, 'square', 0.08, 120); },
+  room() { this.tone(740, 0.5, 'sine', 0.08, 1100); }
+};
+
+/* ---------------------------- 输入 ---------------------------- */
+const Input = {
+  dir: null, aid: null, ax: 0, ay: 0, keys: {},
+  reset() { this.dir = null; this.aid = null; this.keys = {}; }
+};
+
+/* ---------------------------- 游戏主控 ---------------------------- */
+const $ = function (id) { return document.getElementById(id); };
+const Game = {
+  state: 'menu',     // menu | playing | paused | result
+  world: null,
+  demo: true,
+  menu: { faction: 'ball', skinBall: 'aqua', skinSnake: 'bamboo', diff: 'normal', map: 'plain' },
+  hudTick: 0,
+  endReason: '',
+
+  boot() {
+    const d = Store.data;
+    this.menu.faction = (d.faction === 'snake') ? 'snake' : 'ball';
+    this.menu.skinBall = d.skinBall; this.menu.skinSnake = d.skinSnake;
+    this.menu.diff = d.diff;
+    this.menu.map = d.map;
+    Sound.on = d.sound !== false;
+
+    View.init($('game'));
+    $('rulesBody').innerHTML = RULES_HTML;
+    this.bindUI();
+    this.bindInput();
+    this.refreshMenu();
+    this.startDemo();
+    requestAnimationFrame(loop);
+  },
+
+  /* ---- UI 绑定 ---- */
+  bindUI() {
+    const self = this;
+    $('facBall').onclick = function () { self.menu.faction = 'ball'; self.refreshMenu(); };
+    $('facSnake').onclick = function () { self.menu.faction = 'snake'; self.refreshMenu(); };
+    const ds = $('diffList').children;
+    for (let i = 0; i < ds.length; i++) {
+      (function (el) {
+        el.onclick = function () {
+          self.menu.diff = el.getAttribute('data-d');
+          for (let j = 0; j < ds.length; j++) ds[j].className = 'diff';
+          el.className = 'diff on';
+        };
+      })(ds[i]);
+    }
+    $('btnStart').onclick = function () { Sound.init(); self.start(); };
+    $('btnRules2').onclick = function () { self.showRules(); };
+    $('btnRules3').onclick = function () { self.showRules(); };
+    $('btnCloseRules').onclick = function () { $('ovRules').classList.remove('show'); };
+    $('btnAgain').onclick = function () { self.start(); };
+    $('btnBackMenu').onclick = function () { self.toMenu(); };
+    $('btnPause').onclick = function () { self.pause(); };
+    $('btnResume').onclick = function () { self.resume(); };
+    $('btnQuit').onclick = function () { self.endGame('quit'); };
+    $('btnShop').onclick = function () { self.openShop(); };
+    $('btnCloseShop').onclick = function () { $('ovShop').classList.remove('show'); };
+    $('btnRepo').onclick = function () { self.openRepo(); };
+    $('btnCloseRepo').onclick = function () { $('ovRepo').classList.remove('show'); };
+    $('btnSound').onclick = function () {
+      Sound.on = !Sound.on;
+      Store.data.sound = Sound.on; Store.save();
+      $('btnSound').textContent = Sound.on ? '♪' : '✕';
+      if (Sound.on) Sound.init();
+    };
+    $('btnSound').textContent = Sound.on ? '♪' : '✕';
+
+    /* 冲刺 */
+    const dash = $('dashBtn');
+    const doDash = function (e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (self.state !== 'playing' || !self.world) return;
+      const p = self.world.player;
+      if (p && !p.dead && p.tryDash()) Sound.dash();
+    };
+    dash.addEventListener('touchstart', doDash, { passive: false });
+    dash.addEventListener('mousedown', doDash);
+
+    /* 吐食 */
+    const spit = $('spitBtn');
+    const doSpit = function (e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (self.state !== 'playing' || !self.world) return;
+      const p = self.world.player;
+      if (p && !p.dead && p.spitFood(self.world)) Sound.spit();
+    };
+    spit.addEventListener('touchstart', doSpit, { passive: false });
+    spit.addEventListener('mousedown', doSpit);
+    this._doSpit = doSpit;
+
+    this.bindAdmin();
+  },
+
+  /* ---- 隐藏管理入口：连点标题（无任何视觉反馈与计数提示） ---- */
+  bindAdmin() {
+    const self = this;
+    let taps = 0, last = 0;
+    $('gameTitle').addEventListener('click', function () {
+      const now = performance.now();
+      if (now - last > 1400) taps = 0;
+      last = now;
+      taps++;
+      if (taps >= ADMIN_TAPS) {
+        taps = 0;
+        self.openPwd();
+      }
+    });
+    $('btnPwdOk').onclick = function () {
+      if ($('pwdInput').value === ADMIN_PWD) {
+        $('ovPwd').classList.remove('show');
+        self.openAdmin();
+      } else {
+        $('ovPwd').classList.remove('show');
+      }
+    };
+    $('pwdInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') $('btnPwdOk').onclick();
+    });
+    $('btnPwdCancel').onclick = function () { $('ovPwd').classList.remove('show'); };
+
+    $('adSave').onclick = function () { self.adminSave(); };
+    $('adClose').onclick = function () { $('ovAdmin').classList.remove('show'); };
+    $('adUnlockSkins').onclick = function () {
+      const d = Store.data;
+      for (let i = 0; i < BALL_SKINS.length; i++) if (d.skinOwned.indexOf(BALL_SKINS[i].id) < 0) d.skinOwned.push(BALL_SKINS[i].id);
+      for (let i = 0; i < SNAKE_SKINS.length; i++) if (d.skinOwned.indexOf(SNAKE_SKINS[i].id) < 0) d.skinOwned.push(SNAKE_SKINS[i].id);
+      Store.save(); self.refreshMenu(); Sound.buy();
+    };
+    $('adLockSkins').onclick = function () {
+      Store.data.skinOwned = ['aqua', 'bamboo'];
+      if (Store.data.skinBall && Store.data.skinOwned.indexOf(Store.data.skinBall) < 0) Store.data.skinBall = 'aqua';
+      if (Store.data.skinSnake && Store.data.skinOwned.indexOf(Store.data.skinSnake) < 0) Store.data.skinSnake = 'bamboo';
+      Store.save(); self.refreshMenu();
+    };
+    $('adUnlockMaps').onclick = function () {
+      const d = Store.data;
+      for (let i = 0; i < MAPS.length; i++) if (d.maps.indexOf(MAPS[i].id) < 0) d.maps.push(MAPS[i].id);
+      Store.save(); self.refreshMenu(); Sound.buy();
+    };
+    $('adItemsClear').onclick = function () {
+      Store.data.items = { speed10: 0, growSeg: 0, growMass: 0, shield8: 0, revive: 0 };
+      Store.data.equipped = [];
+      Store.save(); self.refreshMenu();
+    };
+    $('adReset').onclick = function () {
+      Store.resetAll();
+      self.menu.faction = 'ball'; self.menu.skinBall = 'aqua'; self.menu.skinSnake = 'bamboo';
+      self.menu.diff = 'normal'; self.menu.map = 'plain';
+      self.refreshMenu();
+      $('ovAdmin').classList.remove('show');
+    };
+  },
+
+  openPwd() {
+    $('pwdInput').value = '';
+    $('ovPwd').classList.add('show');
+  },
+  openAdmin() {
+    const d = Store.data;
+    $('adBestBall').value = d.bestBall;
+    $('adBestSnake').value = d.bestSnake;
+    $('adCoins').value = d.coins;
+    $('adBallMass').value = d.cheat.ballMass;
+    $('adSnakeSeg').value = d.cheat.snakeSeg;
+    ITEMS.forEach(function (it) { $('adIt_' + it.id).value = d.items[it.id] || 0; });
+    $('ovAdmin').classList.add('show');
+  },
+  adminSave() {
+    const d = Store.data;
+    d.bestBall = Math.max(0, Math.floor(+$('adBestBall').value || 0));
+    d.bestSnake = Math.max(0, Math.floor(+$('adBestSnake').value || 0));
+    d.coins = Math.max(0, Math.floor(+$('adCoins').value || 0));
+    d.cheat.ballMass = clamp(Math.floor(+$('adBallMass').value || 0), 0, 5000);
+    d.cheat.snakeSeg = clamp(Math.floor(+$('adSnakeSeg').value || 0), 0, 300);
+    ITEMS.forEach(function (it) { d.items[it.id] = Math.max(0, Math.floor(+$('adIt_' + it.id).value || 0)); });
+    Store.save();
+    this.refreshMenu();
+    $('ovAdmin').classList.remove('show');
+    Sound.buy();
+  },
+
+  /* ---- 商店 ---- */
+  openShop() {
+    this.buildShop();
+    $('ovShop').classList.add('show');
+  },
+  buildShop() {
+    $('shopCoins').textContent = fmtNum(Store.data.coins);
+    const box = $('shopList');
+    box.innerHTML = '';
+    const d = Store.data;
+    for (let i = 0; i < ITEMS.length; i++) {
+      const it = ITEMS[i];
+      const row = document.createElement('div');
+      row.className = 'itemRow';
+      const sym = document.createElement('div');
+      sym.className = 'isym'; sym.textContent = it.sym;
+      const info = document.createElement('div');
+      info.className = 'iinfo';
+      const nm = document.createElement('div');
+      nm.className = 'inm'; nm.textContent = it.name;
+      const ds2 = document.createElement('div');
+      ds2.className = 'ids'; ds2.textContent = it.desc + '（已有 ' + (d.items[it.id] || 0) + '）';
+      info.appendChild(nm); info.appendChild(ds2);
+      const pr = document.createElement('div');
+      pr.className = 'iprice'; pr.textContent = it.price + ' 金币';
+      const btn = document.createElement('button');
+      btn.className = 'btn small';
+      btn.textContent = '购买';
+      btn.onclick = function () {
+        if (d.coins >= it.price) {
+          d.coins -= it.price;
+          d.items[it.id] = (d.items[it.id] || 0) + 1;
+          Store.save();
+          Game.buildShop();
+          Sound.buy();
+        } else {
+          Sound.deny();
+          ds2.textContent = '金币不足，先去打一局吧';
+          setTimeout(function () { Game.buildShop(); }, 1100);
+        }
+      };
+      row.appendChild(sym); row.appendChild(info); row.appendChild(pr); row.appendChild(btn);
+      box.appendChild(row);
+    }
+  },
+
+  /* ---- 仓库 ---- */
+  openRepo() {
+    this.buildRepo();
+    $('ovRepo').classList.add('show');
+  },
+  buildRepo() {
+    const box = $('repoList');
+    box.innerHTML = '';
+    const d = Store.data;
+    let any = false;
+    for (let i = 0; i < ITEMS.length; i++) {
+      const it = ITEMS[i];
+      const cnt = d.items[it.id] || 0;
+      if (cnt <= 0) continue;
+      any = true;
+      const eq = d.equipped.indexOf(it.id) >= 0;
+      const row = document.createElement('div');
+      row.className = 'itemRow';
+      const sym = document.createElement('div');
+      sym.className = 'isym'; sym.textContent = it.sym;
+      const info = document.createElement('div');
+      info.className = 'iinfo';
+      const nm = document.createElement('div');
+      nm.className = 'inm'; nm.textContent = it.name + (it.id === 'revive' ? ' · 被动' : (eq ? ' · 已装备' : ''));
+      const ds2 = document.createElement('div');
+      ds2.className = 'ids'; ds2.textContent = it.desc;
+      info.appendChild(nm); info.appendChild(ds2);
+      const cntEl = document.createElement('div');
+      cntEl.className = 'icnt'; cntEl.textContent = '×' + cnt;
+      const btn = document.createElement('button');
+      if (it.id === 'revive') {
+        btn.className = 'btn small ghost';
+        btn.textContent = '自动携带';
+        btn.disabled = true;
+      } else {
+        btn.className = 'btn small' + (eq ? '' : ' ghost');
+        btn.textContent = eq ? '卸下' : '装备';
+        btn.onclick = function () {
+          const ix = d.equipped.indexOf(it.id);
+          if (ix >= 0) d.equipped.splice(ix, 1);
+          else d.equipped.push(it.id);
+          Store.save();
+          Game.buildRepo();
+        };
+      }
+      row.appendChild(sym); row.appendChild(info); row.appendChild(cntEl); row.appendChild(btn);
+      box.appendChild(row);
+    }
+    if (!any) {
+      const em = document.createElement('div');
+      em.className = 'hint';
+      em.textContent = '仓库空空如也，去商店买点道具吧';
+      box.appendChild(em);
+    }
+  },
+
+  refreshMenu() {
+    const f = this.menu.faction;
+    $('facBall').className = 'fac' + (f === 'ball' ? ' on' : '');
+    $('facSnake').className = 'fac snake' + (f === 'snake' ? ' on' : '');
+    $('bestBall').textContent = fmtNum(Store.data.bestBall);
+    $('bestSnake').textContent = fmtNum(Store.data.bestSnake);
+    $('coinBox').textContent = fmtNum(Store.data.coins);
+    this.buildMaps();
+    this.buildSkins();
+  },
+
+  /* ---- 地图选择 ---- */
+  buildMaps() {
+    const box = $('mapList');
+    box.innerHTML = '';
+    const d = Store.data;
+    const self = this;
+    for (let i = 0; i < MAPS.length; i++) {
+      const m = MAPS[i];
+      const owned = d.maps.indexOf(m.id) >= 0;
+      const cur = d.map === m.id;
+      const el = document.createElement('div');
+      el.className = 'map' + (cur ? ' on' : '') + (owned ? '' : ' lock');
+      const mn = document.createElement('div');
+      mn.className = 'mn'; mn.textContent = m.name;
+      const md = document.createElement('div');
+      md.className = 'md';
+      md.textContent = owned ? m.desc : (m.price + ' 金币解锁');
+      el.appendChild(mn); el.appendChild(md);
+      el.onclick = function () {
+        if (owned) {
+          d.map = m.id; self.menu.map = m.id; Store.save(); self.refreshMenu();
+          if (Game.state === 'menu') Game.startDemo();   // 背景即时切换
+        } else if (d.coins >= m.price) {
+          d.coins -= m.price; d.maps.push(m.id); d.map = m.id; self.menu.map = m.id;
+          Store.save(); self.refreshMenu(); Sound.buy();
+          if (Game.state === 'menu') Game.startDemo();
+        } else {
+          Sound.deny();
+          md.textContent = '金币不足';
+          setTimeout(function () { Game.refreshMenu(); }, 1100);
+        }
+      };
+      box.appendChild(el);
+    }
+  },
+
+  buildSkins() {
+    const f = this.menu.faction;
+    const cur = f === 'ball' ? this.menu.skinBall : this.menu.skinSnake;
+    const list = skinList(f);
+    const box = $('skinList');
+    box.innerHTML = '';
+    const d = Store.data;
+    const self = this;
+    for (let i = 0; i < list.length; i++) {
+      const sk = list[i];
+      const owned = d.skinOwned.indexOf(sk.id) >= 0 || sk.need === 0;
+      const el = document.createElement('div');
+      el.className = 'skin' + (sk.id === cur ? ' on' : '') + (owned ? '' : ' lock');
+      const cv = document.createElement('canvas');
+      el.appendChild(cv);
+      const nm = document.createElement('div');
+      nm.className = 'sn'; nm.textContent = sk.name + (owned ? '' : ' 锁');
+      el.appendChild(nm);
+      const sl = document.createElement('div');
+      sl.className = 'sl'; sl.textContent = sk.need ? (sk.need + ' 金币') : '初始';
+      el.appendChild(sl);
+      box.appendChild(el);
+      drawSkinPreview(cv, f, sk);
+      (function (skin, owned, slEl) {
+        el.onclick = function () {
+          if (owned) {
+            if (d.skinOwned.indexOf(skin.id) < 0) d.skinOwned.push(skin.id);
+            if (f === 'ball') self.menu.skinBall = skin.id; else self.menu.skinSnake = skin.id;
+            self.refreshMenu();
+          } else if (d.coins >= skin.need) {
+            d.coins -= skin.need;
+            d.skinOwned.push(skin.id);
+            if (f === 'ball') self.menu.skinBall = skin.id; else self.menu.skinSnake = skin.id;
+            Store.save();
+            self.refreshMenu();
+            Sound.buy();
+          } else {
+            Sound.deny();
+            slEl.textContent = '金币不足';
+            setTimeout(function () { slEl.textContent = skin.need + ' 金币'; }, 1200);
+          }
+        };
+      })(sk, owned, sl);
+    }
+  },
+
+  /* ---- 输入绑定 ---- */
+  bindInput() {
+    const self = this;
+    const cv = $('game');
+    const setDirFromVec = function (dx, dy) {
+      const len = Math.hypot(dx, dy);
+      if (len < 14) return;
+      Input.dir = Math.atan2(dy, dx);
+    };
+    // 触摸：按住拖动，方向 = 锚点 -> 当前点
+    cv.addEventListener('touchstart', function (e) {
+      Sound.init();
+      const t = e.changedTouches[0];
+      Input.aid = t.identifier;
+      Input.ax = t.clientX; Input.ay = t.clientY;
+      e.preventDefault();
+    }, { passive: false });
+    cv.addEventListener('touchmove', function (e) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier !== Input.aid) continue;
+        const dx = t.clientX - Input.ax, dy = t.clientY - Input.ay;
+        if (Math.hypot(dx, dy) > 90) {          // 摇杆：跟随手指，锚点随动
+          Input.ax = t.clientX - dx * 0.55;
+          Input.ay = t.clientY - dy * 0.55;
+        }
+        setDirFromVec(t.clientX - Input.ax, t.clientY - Input.ay);
+      }
+      e.preventDefault();
+    }, { passive: false });
+    const endTouch = function (e) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === Input.aid) Input.aid = null;
+      }
+    };
+    cv.addEventListener('touchend', endTouch);
+    cv.addEventListener('touchcancel', endTouch);
+
+    // 鼠标
+    cv.addEventListener('mousemove', function (e) {
+      setDirFromVec(e.clientX - window.innerWidth / 2, e.clientY - window.innerHeight / 2);
+    });
+    // 键盘
+    window.addEventListener('keydown', function (e) {
+      Input.keys[e.key.toLowerCase()] = true;
+      if (e.key === ' ') {
+        if (self.state === 'playing' && self.world) {
+          const p = self.world.player;
+          if (p && !p.dead && p.tryDash()) Sound.dash();
+        }
+        e.preventDefault();
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        if (self._doSpit) self._doSpit(null);
+      }
+      if (e.key === 'Escape' || e.key === 'p') {
+        if (self.state === 'playing') self.pause();
+        else if (self.state === 'paused') self.resume();
+      }
+    });
+    window.addEventListener('keyup', function (e) { Input.keys[e.key.toLowerCase()] = false; });
+
+    // 防止 iOS 手势缩放 / 双击缩放
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+    document.addEventListener('dblclick', function (e) { e.preventDefault(); });
+
+    window.addEventListener('resize', function () { View.resize(); });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () { View.resize(); }, 300);
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && self.state === 'playing') self.pause();
+    });
+  },
+
+  keyDir() {
+    const k = Input.keys;
+    let dx = 0, dy = 0;
+    if (k['a'] || k['arrowleft']) dx -= 1;
+    if (k['d'] || k['arrowright']) dx += 1;
+    if (k['w'] || k['arrowup']) dy -= 1;
+    if (k['s'] || k['arrowdown']) dy += 1;
+    if (dx === 0 && dy === 0) return null;
+    return Math.atan2(dy, dx);
+  },
+
+  /* ---- 流程 ---- */
+  startDemo() {
+    const self = this;
+    const w = new World({
+      faction: Math.random() < 0.5 ? 'ball' : 'snake',
+      skinId: Math.random() < 0.5 ? pick(BALL_SKINS).id : pick(SNAKE_SKINS).id,
+      diff: 'normal',
+      mapId: Store.data.map
+    });
+    w.player.isPlayer = false;
+    w.player.name = '演示';
+    w.demo = true;
+    w.onEvent = null;
+    w.onPlayerDead = null;
+    w.onTimeUp = null;
+    this.world = w;
+    this.demo = true;
+    View.snapCam(w.player);
+  },
+
+  start() {
+    const m = this.menu;
+    const d = Store.data;
+    d.faction = m.faction; d.skinBall = m.skinBall; d.skinSnake = m.skinSnake; d.diff = m.diff;
+    // 消耗已装备道具（复活护符为被动道具，走下方独立逻辑）
+    const used = [];
+    d.equipped = d.equipped.filter(function (id) { return id !== 'revive'; });
+    for (let i = 0; i < d.equipped.length; i++) {
+      const id = d.equipped[i];
+      if ((d.items[id] || 0) > 0) {
+        d.items[id]--;
+        used.push(id);
+      }
+    }
+    d.equipped = [];
+    // 复活护符：被动道具，开局自动携带全部库存作为本局复活次数
+    const revives = d.items.revive || 0;
+    d.items.revive = 0;
+    Store.save();
+    const self = this;
+    const w = new World({
+      faction: m.faction,
+      skinId: m.faction === 'ball' ? m.skinBall : m.skinSnake,
+      diff: m.diff,
+      mapId: d.map,
+      items: used,
+      revives: revives,
+      cheat: d.cheat
+    });
+    w.demo = false;
+    w.onEvent = function (t, x, y, ex) { self.onEvent(t, x, y, ex); };
+    w.onPlayerDead = function () { self.endGame('dead'); };
+    w.onTimeUp = function () { self.endGame('time'); };
+    w.onRevive = function (left) {
+      self.toast('复活！剩余次数 ' + left);
+      Sound.buy();
+    };
+    this.world = w;
+    this.demo = false;
+    this.state = 'playing';
+    Input.reset();
+    $('meName').textContent = m.faction === 'ball' ? '你 · 球' : '你 · 蛇';
+    $('meDot').style.background = m.faction === 'ball' ? '#3fa9f5' : '#43e39a';
+    $('meDot').style.boxShadow = '0 0 8px ' + (m.faction === 'ball' ? '#3fa9f5' : '#43e39a');
+    $('ovMenu').classList.remove('show');
+    $('ovResult').classList.remove('show');
+    $('ovPause').classList.remove('show');
+    $('hud').style.display = 'flex';
+    $('board').style.display = 'block';
+    $('miniWrap').style.display = 'block';
+    $('dashBtn').style.display = 'flex';
+    $('spitBtn').style.display = 'flex';
+    View.snapCam(w.player);
+    this.hudTick = 0;
+    this.updateBoard();
+  },
+
+  pause() {
+    if (this.state !== 'playing') return;
+    this.state = 'paused';
+    $('ovPause').classList.add('show');
+  },
+  resume() {
+    if (this.state !== 'paused') return;
+    this.state = 'playing';
+    $('ovPause').classList.remove('show');
+  },
+  toMenu() {
+    this.state = 'menu';
+    $('ovResult').classList.remove('show');
+    $('ovPause').classList.remove('show');
+    $('hud').style.display = 'none';
+    $('board').style.display = 'none';
+    $('miniWrap').style.display = 'none';
+    $('dashBtn').style.display = 'none';
+    $('spitBtn').style.display = 'none';
+    $('ovMenu').classList.add('show');
+    this.refreshMenu();
+    this.startDemo();
+  },
+  showRules() { $('ovRules').classList.add('show'); },
+
+  onEvent(t, x, y, ex) {
+    if (t === 'eat') Sound.eat(ex === 1);
+    else if (t === 'kill') {
+      if (ex && ex.byPlayer) Sound.kill();
+    } else if (t === 'cut') {
+      if (ex && ex.byPlayer) Sound.cut();
+    } else if (t === 'room') {
+      Sound.room();
+    } else if (t === 'revive') {
+      Sound.kill();
+    }
+  },
+
+  endGame(reason) {
+    if (this.state === 'result') return;
+    this.state = 'result';
+    Sound.die();
+    $('ovPause').classList.remove('show');     // 修复：放弃时关闭暂停面板
+    const w = this.world, p = w.player;
+    if (!p) { this.toMenu(); return; }
+    const lb = w.leaderboard();
+    let rank = lb.length;
+    for (let i = 0; i < lb.length; i++) if (lb[i].isPlayer) { rank = i + 1; break; }
+    // 阵亡：显示阵亡前的名次（不计入玩家已退场的死局）
+    if (reason === 'dead' && p.dead) rank = Math.max(1, Math.min(rank, lb.length));
+    const score = p.score;
+    const d = Store.data;
+    d.games++;
+    let isNew = false;
+    if (p.type === 'ball') { if (score > d.bestBall) { d.bestBall = score; isNew = true; } }
+    else { if (score > d.bestSnake) { d.bestSnake = score; isNew = true; } }
+    // 金币结算：整体下调，普通一局 3~5 金币，单局最多 +20
+    let gain = Math.floor(p.aliveTime * 0.03 + p.foods * 0.07 + p.kills * 3 + p.growth * 0.01 +
+      (rank === 1 ? 8 : rank <= 3 ? 4 : 0));
+    gain = Math.min(20, gain);
+    // 失败惩罚：过快阵亡 或 阵亡时体积过小 → 扣金币（单局最多扣 100）
+    let penalty = 0;
+    if (reason === 'dead') {
+      if (p.aliveTime < 25) penalty += 30;                  // 过快死亡
+      if (p.massTotal < p.startMass * 1.15) penalty += 40;  // 体积过小（几乎没长大）
+    }
+    penalty = Math.min(100, penalty);
+    const before = d.coins;
+    d.coins = Math.max(0, d.coins + gain - penalty);
+    Store.save();
+    const netGain = d.coins - before;
+
+    const titleMap = { dead: '阵亡结算', time: '时间到', quit: '本局放弃' };
+    $('resTitle').textContent = titleMap[reason] || '本局结束';
+    $('resRank').textContent = '#' + rank;
+    const tag = rank === 1 ? '全场冠军' : rank === 2 ? '亚军' : rank === 3 ? '季军' :
+      rank <= 5 ? '强者' : rank <= 9 ? '中游' : '生存者';
+    $('resRankLabel').textContent = '全场 ' + lb.length + ' 名对手中排名 · ' + tag;
+    $('resNew').innerHTML = isNew ? '<div class="newRec">★ 新纪录</div>' : '';
+    $('resScore').textContent = fmtNum(score);
+    if (p.type === 'ball') {
+      $('resSize').textContent = fmtNum(p.peak); $('resSizeKey').textContent = '峰值质量';
+    } else {
+      $('resSize').textContent = fmtNum(p.peak); $('resSizeKey').textContent = '峰值总质量';
+    }
+    $('coinGain').textContent = (netGain >= 0 ? '+' : '') + netGain;
+    $('coinTotal').textContent = fmtNum(d.coins);
+    $('brGrowth').textContent = '+' + Math.floor(p.growth * 3);
+    $('brKill').textContent = '+' + (p.kills * 200);
+    $('brFood').textContent = '+' + (p.foods * 2);
+    $('brTime').textContent = '+' + Math.floor(p.aliveTime * 1.5);
+    $('resKill').textContent = p.kills;
+    $('resFood').textContent = p.foods;
+    $('resTime').textContent = Math.floor(p.aliveTime) + 's';
+
+    const box = $('resBoard');
+    box.innerHTML = '';
+    for (let i = 0; i < Math.min(lb.length, 10); i++) {
+      const it = lb[i];
+      const row = document.createElement('div');
+      row.className = 'brow' + (it.isPlayer ? ' me' : '');
+      row.innerHTML = '<span class="i">' + (i + 1) + '</span>' +
+        '<span class="i">' + (it.type === 'ball' ? '●' : '∿') + '</span>' +
+        '<span class="n">' + it.name + '</span>' +
+        '<span class="s">' + fmtNum(it.score) + '</span>';
+      box.appendChild(row);
+    }
+    $('hud').style.display = 'none';
+    $('board').style.display = 'none';
+    $('dashBtn').style.display = 'none';
+    $('spitBtn').style.display = 'none';
+    $('miniWrap').style.display = 'none';
+    $('ovResult').classList.add('show');
+  },
+
+  /* ---- HUD ---- */
+  updateHUD(dt) {
+    const w = this.world, p = w.player;
+    if (!p) return;
+    $('scoreChip').textContent = fmtNum(p.score);
+    if (p.type === 'ball') {
+      $('sizeKey').textContent = '质量';
+      $('sizeChip').textContent = fmtNum(p.mass);
+    } else {
+      $('sizeKey').textContent = '体长';
+      $('sizeChip').textContent = p.segments + ' 节';
+    }
+    const t = Math.max(0, w.time);
+    $('timeVal').textContent = Math.floor(t / 60) + ':' + ('0' + Math.floor(t % 60)).slice(-2);
+    $('killVal').textContent = p.kills;
+    // 复活次数
+    const rc = $('reviveChip');
+    if (p.revives > 0) { rc.style.display = ''; $('reviveVal').textContent = p.revives; }
+    else rc.style.display = 'none';
+    // 冲刺冷却
+    const dash = $('dashBtn');
+    const cdEl = dash.querySelector('.cd');
+    if (p.dashCd > 0) {
+      dash.classList.add('cooling');
+      cdEl.textContent = p.dashCd.toFixed(1) + 's';
+    } else if (p.dashT > 0) {
+      dash.classList.remove('cooling');
+      cdEl.textContent = '冲刺中';
+    } else {
+      dash.classList.remove('cooling');
+      cdEl.textContent = '就绪';
+    }
+    // 吐食状态（无冷却；吐到基础大小即不可再吐）
+    const spit = $('spitBtn');
+    const scd = spit.querySelector('.cd');
+    const cantSpit = p.type === 'ball' ? (p.mass <= p.startMass) : (p.segments <= p.startSeg);
+    if (cantSpit) {
+      spit.classList.add('cooling');
+      scd.textContent = '满底';
+    } else if (p.boostT > 0) {
+      spit.classList.remove('cooling');
+      scd.textContent = '加速中';
+    } else {
+      spit.classList.remove('cooling');
+      scd.textContent = '就绪';
+    }
+    this.hudTick -= dt;
+    if (this.hudTick <= 0) { this.hudTick = 0.3; this.updateBoard(); }
+  },
+
+  toast(msg) {
+    let el = $('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      $('app').appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(function () { el.classList.remove('show'); }, 1400);
+  },
+
+  updateBoard() {
+    const w = this.world;
+    if (!w) return;
+    const lb = w.leaderboard();
+    const box = $('boardList');
+    let html = '';
+    for (let i = 0; i < Math.min(lb.length, 10); i++) {
+      const it = lb[i];
+      html += '<div class="brow' + (it.isPlayer ? ' me' : '') + '">' +
+        '<span class="i">' + (i + 1) + '</span>' +
+        '<span class="i">' + (it.type === 'ball' ? '●' : '∿') + '</span>' +
+        '<span class="n">' + it.name + '</span>' +
+        '<span class="s">' + fmtNum(it.score) + '</span></div>';
+    }
+    box.innerHTML = html;
+    let rank = 1;
+    for (let i = 0; i < lb.length; i++) if (lb[i].isPlayer) { rank = i + 1; break; }
+    $('rankVal').textContent = '#' + rank + '/' + lb.length;
+  }
+};
+
+/* ---------------------------- 主循环 ---------------------------- */
+let lastT = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 1 / 25) dt = 1 / 25;
+
+  const G = Game, w = G.world;
+
+  if (G.state === 'playing' && w) {
+    const p = w.player;
+    if (p && !p.dead) {
+      const kd = G.keyDir();
+      if (kd !== null) p.targetDir = kd;
+      else if (Input.dir !== null) p.targetDir = Input.dir;
+    }
+    w.update(dt);
+    View.updateCam(w.player, dt);
+    G.updateHUD(dt);
+  } else if (G.state === 'menu' && w) {
+    // 演示战场：AI 自动厮杀作为背景
+    if (w.over || !w.player || w.player.dead || w.time <= 0) { G.startDemo(); return; }
+    w.update(dt);
+    const p = w.player;
+    if (p && !p.dead) View.updateCam(p, dt);
+  } else if (w) {
+    if (w.player && !w.player.dead) View.updateCam(w.player, dt);
+  }
+
+  if (w) {
+    View.draw(w);
+    if (G.state !== 'menu') View.drawMini($('miniWrap'), w);
+  }
+}
+
+/* ---------------------------- 启动 ---------------------------- */
+window.addEventListener('load', function () {
+  Game.boot();
+});
+</script>
+</body>
+</html>
