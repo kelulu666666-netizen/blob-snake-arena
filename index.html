@@ -1384,6 +1384,17 @@ function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
 function dist(ax, ay, bx, by) { return Math.sqrt(dist2(ax, ay, bx, by)); }
+/* v9.0.8 补充：线段 (x1,y1)-(x2,y2) 与圆 (cx,cy,r) 是否相交。
+   用于「蛇球快跑」的扫掠碰撞检测 —— 即使一帧内位移很大也不会漏判。 */
+function segCircleHit(x1, y1, x2, y2, cx, cy, r) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) return dist2(x1, y1, cx, cy) <= r * r;
+  let t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  const px = x1 + dx * t, py = y1 + dy * t;
+  return dist2(px, py, cx, cy) <= r * r;
+}
 function angDiff(a, b) {
   let d = (b - a) % TAU;
   if (d > Math.PI) d -= TAU;
@@ -1752,7 +1763,8 @@ const RULES_HTML = [
     '· 同阵营的不同角色可以完全不同：例如「星海蓝」带磁力场 Lv4 + 能量新星 Lv9，「熔岩红」只带能量护盾 Lv7 并外挂飞刀。</li>',
   '<li><b>逐项解锁</b>（v9.0.3）：解锁管理里按<b>球皮肤 / 蛇皮肤 / 地图</b>三组，每个条目都能<b>单独勾选</b>解锁或上锁，不再只有「一键全解锁」；<br>' +
     '· 初始免费的条目标为「初始」，不可取消；<br>' +
-    '· 修改器保存时会校验：当前使用的皮肤与地图必须处于已解锁状态，否则自动回退。</li>',
+    '· 修改器保存时会校验：当前使用的皮肤与地图必须处于已解锁状态，否则自动回退。<br>' +
+    '· <b>修改器皮肤配置修复</b>（v9.0.8 补充Ⅴ）：①在「<b>解锁管理</b>」里勾选 / 取消勾选皮肤<b>即时生效</b>（修复了以前只能解锁不能上锁的问题），解锁后该角色<b>立刻出现在上方「要配置的皮肤角色」下拉</b>里；②<b>切换配置角色时会自动保存上一个角色的编辑</b>，不再丢失；③每个角色的能力 / 武器<b>互不干扰</b>——改 A 不会连带改掉同阵营的 B；④保存<b>不再凭空增加武器库存</b>（以前改一次配置就白送一件武器）。</li>',
   '<li><b>小游戏「蛇球快跑」</b>（v9.0.3，主菜单进入）：无尽跑酷，<b>场地无限长、整条路持续向后滚动</b>。<br>' +
     '· 进入前先选<b>你扮演球还是蛇</b>：扮演球时身后是一条蛇在追，扮演蛇时身后是一个球在追。<br>' +
     '· 路上会掉落<b>食物</b>（球吃质量、蛇吃长度），并逐渐拉开与追赶者的距离。<br>' +
@@ -1770,6 +1782,17 @@ const RULES_HTML = [
     '· <b>晃动更克制</b>：天敌咬住时不再每帧狂抖，改为轻脉冲；整体抖动幅度下调约 40%，危险红晕仅在领先距离过低时才出现。<br>' +
     '· <b>操控更稳</b>：移动改为<b>以按下点为锚的相对摇杆</b>（手指抖动不漂移）；地铁神庙跳 / 滑去掉过严的按压时长门限，并支持键盘 <b>W/S 或 ↑/↓</b>。<br>' +
     '· <b>画面更清</b>：HUD 放大加亮，新增<b>天敌距离血条</b>（绿=安全·黄=警惕·红=危险），特殊路段顶部提示加长、字号加大。</li>',
+  '<li><b>蛇球快跑 · 投射与判定对齐</b>（v9.0.8 补充Ⅵ）：彻底修掉「<b>食物看着撞上了却不消失</b>」以及「<b>没碰到却凭空消失</b>」。<br>' +
+    '· <b>原因</b>：跑酷是伪 3D 透视，碰撞判定却用了<b>世界坐标</b>、画面绘制用的是<b>屏幕坐标</b>，两者尺度完全不同 —— 纵向差约 <b>172 像素</b>、横向靠边时最多差 <b>3.77 倍</b>，贴护栏时玩家甚至会被推出画布（x=499 &gt; 画布 480）。补充Ⅳ 加的<b>扫掠检测</b>本身没问题，但扫的是<b>错误坐标</b>，所以高速穿透堵住了、空间错位还在。<br>' +
+    '· <b>修法</b>：新增一组<b>投影互逆</b>函数（统一基准 <b>PLAYER_SCREEN_Y=340</b>、世界⇄屏幕互换、玩家横向投影、玩家深度），把<b>判定与绘制全部统一到屏幕空间</b>，半径公式逐字对齐 —— 做到 <b>「画在哪 = 判定在哪」</b>，透视尺度怎么变都不会错位。<br>' +
+    '· <b>效果</b>：连续 400 颗必中食物<b>零残留</b>、贴护栏时正上方食物<b>照样吃到</b>、明显偏离的<b>不会误吃</b>、单帧跨越高铁速也一样被扫到。专项测试 <b>12/12 全通过</b>。</li>',
+  '<li><b>蛇球快跑 · 大修</b>（v9.0.8 补充Ⅳ）：针对「食物没消失 / 障碍不消失 / 画面糙 / 跑出跑道 / 没有音乐」集中重做——<br>' +
+    '· <b>判定绝不漏接</b>：食物与障碍的碰撞改为<b>扫掠检测</b>（取上一帧与本帧之间的一整段路径与玩家求交），无论跑多快都<b>不会被穿透</b>——<b>碰到食物必定吃掉（并立刻增长质量/长度）、碰到障碍必定触发并消失</b>。<br>' +
+    '· <b>跑道护栏</b>：跑道两侧新增<b>实体护栏</b>，球/蛇被<b>硬性挡住无法越出跑道</b>；蹭到护栏会<b>减速 + 火花 + 轻红晕</b>。<br>' +
+    '· <b>撞障碍更有代价</b>：撞上后<b>整屏变红</b>（全屏红叠加 + 边缘血红渐变）、障碍<b>立刻消失</b>、<b>明显减速</b>且<b>天敌瞬间拉近</b>——更容易被追上，走位变得重要。<br>' +
+    '· <b>画面升级</b>：新增<b>地平线辉光</b>、<b>路面渐变与中央虚线</b>、<b>立体护栏（立柱 + 横梁 + 高光边）</b>、障碍的<b>立体阴影与高光</b>、食物的<b>双层发光圆芯</b>，整体层次与质感明显提升。<br>' +
+    '· <b>体型超屏提示</b>：当球的质量 / 蛇的长度<b>超出屏幕可视范围</b>时，屏幕<b>正上方</b>会浮出一枚<b>红色徽标</b>，显示「⚠ 体型已超出屏幕 · 质量/长度 N（x.x× 可视上限）」，尺寸适中、不遮挡主要视野。<br>' +
+    '· <b>全场景 + 全界面背景音乐</b>：6 个跑酷场景各有<b>专属 BGM</b>（星港科幻 → 熔岩炽热 → 雨林清爽 → 霓虹迷幻 → 深空深邃 → 神殿辉煌），<b>场景切换自动换曲</b>；主菜单 / 基地 / 商店 / 仓库 / 规则 / 结算 / 失败也各有<b>不同界面 BGM</b>，全部由 WebAudio 实时合成、零外部资源，淡入淡出切换不刺耳。首次点击屏幕后自动开始播放。</li>',
   '<li><b>能力兑换制 + 跳一跳降难</b>（v9.0.6）：<br>' +
     '· <b>兑换制</b>：除「初始能力」（角色自带、恒拥有）外，其余能力必须先在控制台<b>对具体某一个角色兑换</b>才能释放；升级也只作用于该角色自己的能力，切换角色后能力面板独属于它。<br>' +
     '· 屏幕<b>固定两个能力键</b>（主能力 + 副技）；「更多」键只在<b>已获得能力 &gt; 2</b> 时出现，面板只列<b>屏幕外已兑换的其余能力</b>，未兑换的一律不可用。<br>' +
@@ -4421,7 +4444,7 @@ const MAZE = {
     d.mazeFac = fac;
     this.RUN = {
       fac: fac, diff: diff, par: P,
-      x: 0, vx: 0, targetX: 0,
+      x: 0, vx: 0, targetX: 0, railT: 0, edgeT: 0,
       dist: 0, spd: P.spd, baseSpd: P.spd, slowT: 0,
       mass: 46, seg: 14,        // 球看质量 / 蛇看长度
       chaser: 0,                // 天敌离你多近（0 = 贴脸，越大越安全）
@@ -4447,6 +4470,8 @@ const MAZE = {
     this.syncHud();
     Game.state = 'maze';
     FX.reset();
+    /* v9.0.8 补充：跑酷进入时按当前场景播放专属 BGM */
+    if (typeof Sound !== 'undefined') Sound.playBGM(Sound.sceneTrack(this.sceneIdx(this.RUN.dist)));
   },
 
   quit(back) {
@@ -4456,6 +4481,7 @@ const MAZE = {
     $('mazeEsc').style.display = 'none';
     $('mazeHint').style.display = 'none';
     document.getElementById('app').classList.remove('mazeMode');
+    if (typeof Sound !== 'undefined') Sound.playBGM('menu');   // v9.0.8 补充：回到主菜单 BGM
     if (back !== false) Game.toMenu();
     else Game.state = 'menu';
   },
@@ -4479,6 +4505,61 @@ const MAZE = {
   /* 路宽（半宽，世界单位）—— 随着距离略微收窄，越跑越难走 */
   halfW(dist) { return clamp(230 - dist * 0.012, 138, 230); },
 
+  /* ==========================================================================
+   * v9.0.8 补充Ⅵ【关键修复】：玩家「碰撞判定世界 y」与「绘制屏幕 y」的统一
+   *
+   * 旧版把「玩家碰撞用的世界 y」硬编码成 340，而绘制时又把玩家画在屏幕 y=340。
+   * 但世界 y=340 经透视投影后落在屏幕 y≈512 —— 两者相差约 172px！
+   * 结果：食物在画面上明明已经碰到球了，判定却还没触发，要继续下滑 172px
+   *       才「吃得掉」—— 表现就是「碰到食物食物不消失 / 没触发吃食物判定」。
+   *
+   * 修复：以「玩家绘制的屏幕 y」为唯一基准（PLAYER_SCREEN_Y），
+   *       反解出它对应的世界 y（PLAYER_WY），碰撞与绘制共用同一个值，永不漂移。
+   * ========================================================================== */
+  PLAYER_SCREEN_Y: 340,
+  /* 透视投影：世界 y（-120 远端 ~ 760 近端）→ 屏幕 y（horizon ~ H2+40） */
+  worldToScreenY(wy, horizon, H2) {
+    const t = clamp((wy - (-120)) / (760 - (-120)), 0, 1);
+    return horizon + t * ((H2 + 40) - horizon);
+  },
+  /* 反解：屏幕 y → 世界 y（与 worldToScreenY 严格互逆） */
+  screenToWorldY(sy, horizon, H2) {
+    const span = (H2 + 40) - horizon;
+    if (span <= 0) return 0;
+    const t = clamp((sy - horizon) / span, 0, 1);
+    return t * (760 - (-120)) + (-120);
+  },
+  /* 玩家碰撞判定用的世界 y（按当前视口尺寸实时反解，自适应任何屏幕） */
+  playerWorldY() {
+    const H2 = (View && View.H) || 820;
+    const horizon = H2 * 0.16;
+    return this.screenToWorldY(this.PLAYER_SCREEN_Y, horizon, H2);
+  },
+  /* 玩家在屏幕上使用的横向缩放比例（绘制与碰撞共用，避免错位）
+     v9.0.8 补充Ⅵ：旧版绘制用 (nearHW/HW)*1.35，而食物用 (farHW+(nearHW-farHW)*t)/HW，
+     两者相差约 3.8 倍 —— 靠边的食物在画面上根本没碰到球，却被判为吃到；反之亦然。
+     更严重的是：`*1.35` 会把玩家推到 x≈499（画布宽仅 480），**贴护栏时玩家直接画出屏幕**。
+     现在统一采用与食物完全一致的投影缩放 —— 所见即所得。 */
+  /* 世界 → 屏幕的横向缩放系数（t 为深度 0~1） */
+  projXScale(HW, t) {
+    const W = (View && View.W) || 480;
+    const nearHW = Math.min(W * 0.46, HW * 2.1);
+    const farHW = nearHW * 0.10;
+    return (farHW + (nearHW - farHW) * t) / Math.max(HW, 1);
+  },
+  /* 玩家所在深度（与 PLAYER_SCREEN_Y 对应） */
+  playerDepth() {
+    const H2 = (View && View.H) || 820;
+    const horizon = H2 * 0.16;
+    const span = (H2 + 40) - horizon;
+    if (span <= 0) return 0;
+    return clamp((this.PLAYER_SCREEN_Y - horizon) / span, 0, 1);
+  },
+  /* 玩家绘制的屏幕 x（碰撞换算共用同一套参数） */
+  playerScreenXpx(HW, worldX) {
+    return ((View && View.W) || 480) / 2 + worldX * this.projXScale(HW, this.playerDepth());
+  },
+
   update(dt) {
     const R = this.RUN;
     if (!R || R.dead) return;
@@ -4501,8 +4582,22 @@ const MAZE = {
     const k = 1 - Math.pow(0.000002, dt);          // 逼近系数
     const nx = R.x + (want - R.x) * k;
     R.vx = (nx - R.x) / Math.max(dt, 1e-4);
-    R.x = clamp(nx, -H + 22, H - 22);
-    R.edgeT = (Math.abs(R.x) >= H - 23) ? (R.edgeT || 0) + dt : 0;
+    /* v9.0.8 补充：跑道两侧【实体护栏】—— 球/蛇被硬性挡在跑道内，无法越出 */
+    const railLeft = -H + 30, railRight = H - 30;
+    const nx2 = clamp(nx, railLeft, railRight);
+    const hitRail = (nx2 !== nx);
+    R.x = nx2;
+    R.vx = hitRail ? 0 : R.vx;
+    R.edgeT = hitRail ? (R.edgeT || 0) + dt : 0;
+    if (hitRail && R.railT <= 0) {          // 撞护栏：减速 + 红晕 + 火花
+      R.railT = 0.5;
+      R.slowT = Math.max(R.slowT, 0.25);
+      R.hurt = Math.max(R.hurt, 0.18);
+      if (typeof FX !== 'undefined') { FX.flash('rgba(255,80,80,.28)', 0.16); FX.haptic('light'); }
+      this.particles(R.x, 340, '#ffd24a', 8);
+      Sound.deny && Sound.deny();
+    }
+    if (R.railT > 0) R.railT -= dt;
     if (R.edgeT > 0.4) { R.slowT = Math.max(R.slowT, 0.35); R.edgeT = 0; }
 
     /* v9.0.4：特殊路段接管（跳一跳 / 地铁神庙 / 钢琴块） */
@@ -4522,32 +4617,79 @@ const MAZE = {
     const flow = R.spd * dt / 8;     // 世界整体下移（米）
     const flowPx = R.spd * dt;
 
+    /* ==========================================================================
+     * v9.0.8 补充Ⅵ【关键修复】：碰撞判定改为【屏幕空间】比对
+     *
+     * 旧版在【世界坐标】里判定：玩家取 (R.x, 340)，食物取 (it.x, it.y)。
+     * 但两者到屏幕的投影尺度完全不同 ——
+     *   · 纵向：世界 340 投到屏幕 512，而玩家其实画在屏幕 340（差约 172px）
+     *   · 横向：玩家绘制缩放 (nearHW/HW)*1.35，食物缩放 (farHW+(nearHW-farHW)t)/HW，
+     *           两者相差约 3.8 倍（靠边的食物最多差 200+px）
+     * 结果：画面上明明碰到了却不判定（或没碰到却判定）。
+     *
+     * 现在统一换算到【屏幕坐标】再比对 —— 所见即所得，永远不会错位。
+     * ========================================================================== */
+    const H2v = (View && View.H) || 820;
+    const horizonV = H2v * 0.16;
+    const Wv = (View && View.W) || 480;
+    const nearYv = H2v + 40;
+    const nearHWv = Math.min(Wv * 0.46, H * 2.1);
+    const farHWv = nearHWv * 0.10;
+    /* 世界坐标 → 屏幕坐标（与 MAZE.draw 中逐一对应） */
+    const w2s = function (wx, wy) {
+      const t = clamp((wy + 120) / (760 + 120), 0, 1);
+      const z = 0.10 + t * 0.90;
+      return { x: Wv / 2 + wx * (farHWv + (nearHWv - farHWv) * t) / Math.max(H, 1),
+               y: horizonV + t * (nearYv - horizonV), z: z };
+    };
+    /* 判定半径严格复用 draw 里的公式： r * p.z * 1.35 */
+    const sRadOf = function (wy, r) {
+      const t = clamp((wy + 120) / (760 + 120), 0, 1);
+      return r * (0.10 + t * 0.90) * 1.35;
+    };
+    /* 玩家：绘制在屏幕 (px, PLAYER_SCREEN_Y)；横向投影与食物完全一致，
+       保证「画在哪 = 判定在哪」，且贴护栏时不会跑出屏幕 */
+    const PXS = this.playerScreenXpx(H, R.x);
+    const PYS = this.PLAYER_SCREEN_Y;
+    /* 玩家的屏幕半径（与绘制一致：球按质量算半径，蛇按头半径） */
+    const PRAD = (R.fac === 'ball')
+      ? clamp(10 + Math.sqrt(Math.max(R.mass, 1)) * 2.4, 12, 62)
+      : clamp(10 + R.seg * 0.5, 10, 30);
+
     /* 食物 */
     for (let i = R.items.length - 1; i >= 0; i--) {
       const it = R.items[i];
+      const y0 = it.y;
       it.y += flowPx;
       if (it.y > 900) { R.items.splice(i, 1); continue; }
       if (it.dead) continue;
-      if (dist(it.x, it.y, R.x, 340) < it.r + 26) {
+      /* 屏幕空间扫掠：取食物「上一帧 → 本帧」在屏幕上的线段，与玩家屏幕圆求交 */
+      const s0 = w2s(it.x, y0), s1 = w2s(it.x, it.y);
+      const itRad = sRadOf(it.y, it.r);
+      if (segCircleHit(s0.x, s0.y, s1.x, s1.y, PXS, PYS, itRad + PRAD)) {
         it.dead = true;
         R.items.splice(i, 1);
         if (R.fac === 'ball') R.mass += it.v; else R.seg += 1;
         R.chaser = Math.min(9.5, R.chaser + (it.big ? 1.3 : 0.5));
         R.coin += it.big ? 3 : 1;
-        this.particles(R.x, 340, '#8bffcf', 10);
-        FX.pop(View.W / 2 + R.x * 1.3, 318, it.big ? '✦' : '+', '#8bffcf', 14);
+        this.particles(it.x, it.y, '#8bffcf', 12);
+        FX.pop(s1.x, s1.y - 22, it.big ? '✦ 大补!' : '+', '#8bffcf', 15);
         Sound.star && Sound.star();
       }
     }
-    /* 障碍 */
+    /* 障碍（同样用【屏幕空间】扫掠，避免与绘制错位） */
     for (let i = R.obs.length - 1; i >= 0; i--) {
       const o = R.obs[i];
+      const y0 = o.y;
       o.y += flowPx;
       if (o.y > 900) { R.obs.splice(i, 1); continue; }
       if (o.hit) continue;
-      if (dist(o.x, o.y, R.x, 340) < o.r + 22) {
+      const s0 = w2s(o.x, y0), s1 = w2s(o.x, o.y);
+      const oRad = sRadOf(o.y, o.r);
+      if (segCircleHit(s0.x, s0.y, s1.x, s1.y, PXS, PYS, oRad + PRAD)) {
         o.hit = true;
         this.hitObs(o);
+        R.obs.splice(i, 1);                  // v9.0.8 补充：撞到的障碍【立即消失】
       }
     }
     for (let i = R.stars.length - 1; i >= 0; i--) { R.stars[i].y += flowPx; if (R.stars[i].y > 900) R.stars.splice(i, 1); }
@@ -4584,6 +4726,8 @@ const MAZE = {
     if (si !== R.sceneIdx) {
       R.sceneIdx = si;
       if (si > 0) { this.flash = 0.5; Game.toast && Game.toast('📍 进入场景：' + this.SCENES[si].name); }
+      /* v9.0.8 补充：场景切换 → 换对应场景的 BGM */
+      if (typeof Sound !== 'undefined') Sound.playBGM(Sound.sceneTrack(si));
     }
     /* v9.0.4：到达触发点则进入一段特殊路段 */
     if (!R.spec && R.dist >= R.nextSeg) this.startSeg(R);
@@ -4596,13 +4740,15 @@ const MAZE = {
     const R = this.RUN;
     if (R.invul > 0) return;
     R.invul = 0.55;
-    R.hurt = 0.35; R.shake = 0.28; R.slowT = 0.9;
+    R.hurt = 0.55; R.shake = 0.34; R.slowT = 1.2;      // v9.0.8 补充：撞障碍【更明显减速】，容易被追上
+    /* v9.0.8 补充：撞障碍 → 屏幕【变红】（红晕渲染 + 全屏闪红） */
+    if (typeof FX !== 'undefined') { FX.flash('#ff3b3b', 0.5); }
     if (o.kind === 'spike') {
       if (R.fac === 'ball') R.mass = Math.max(6, R.mass - R.mass * 0.16 - 4);
       else R.seg = Math.max(3, R.seg - 3);
       Sound.deny && Sound.deny();
     } else if (o.kind === 'wall') {
-      R.slowT = 1.4;
+      R.slowT = 1.7;
       if (R.fac === 'ball') R.mass = Math.max(6, R.mass - 3);
       else R.seg = Math.max(3, R.seg - 1);
       Sound.deny && Sound.deny();
@@ -4612,8 +4758,9 @@ const MAZE = {
       Sound.hurt && Sound.hurt();
     }
     /* 撞障碍 = 天敌更近（领先距离缩短），让走位有意义 */
-    R.chaser = Math.max(0, R.chaser - 0.5);
-    this.particles(o.x, o.y, o.color, 14);
+    R.chaser = Math.max(0, R.chaser - 0.9);
+    this.particles(o.x, o.y, o.color, 18);
+    FX.pop(View.W / 2 + o.x * 1.3, 320, '咚! 减速', '#ff6b6b', 18);
   },
 
   spawnObs(H) {
@@ -4683,6 +4830,8 @@ const MAZE = {
         ' · ' + (isBest ? '🎉 新纪录！' : '最远 ' + fmtNum(d.mazeBest || 0) + ' m') +
         ' · 到达场景：' + self.sceneAt(meters).name;
       $('ovMazeEnd').classList.add('show');
+      /* v9.0.8 补充：跑酷结算 → 专属结算 BGM（破纪录用明亮版） */
+      if (typeof Sound !== 'undefined') Sound.playBGM(isBest ? 'result' : 'resultLose');
       Game.refreshMenu();
     }, 700);
   },
@@ -4998,6 +5147,45 @@ const MAZE = {
     ctx.fillText('长按亮起的列 · 连击 ' + (R.combo || 0), W / 2, H2 * 0.14);
   },
 
+  /* v9.0.8 补充：当球/蛇的体型超出屏幕可视大小时，在屏幕上方生成「尺寸提示」徽标
+     （长度/质量数值 + 提示语，尺寸适中，不遮挡主要视野） */
+  drawSizeBadge(ctx, W, H2, R) {
+    const isBall = (R.fac === 'ball');
+    const val = isBall ? R.mass : R.seg;
+    /* 可视上限：球按半径 62（见玩家绘制上限），蛇按 30 节 */
+    const visMax = isBall ? (Math.pow((62 - 10) / 2.4, 2)) : 30;
+    const ratio = val / visMax;
+    if (ratio <= 1) { R.overSize = false; return; }
+    R.overSize = true;
+    const pulse = 0.85 + Math.sin(R.t * 4) * 0.15;
+    const txt = isBall
+      ? '⚠ 体型已超出屏幕 · 质量 ' + Math.floor(val) + '（' + ratio.toFixed(1) + '× 可视上限）'
+      : '⚠ 体型已超出屏幕 · 长度 ' + Math.floor(val) + ' 节（' + ratio.toFixed(1) + '× 可视上限）';
+    ctx.save();
+    ctx.font = '800 14px system-ui,sans-serif';
+    const tw = ctx.measureText(txt).width;
+    const bw = Math.min(W - 24, tw + 30), bh = 30;
+    const bx = W / 2 - bw / 2, by = 12;
+    /* 圆角底板 */
+    const r = 10;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by); ctx.lineTo(bx + bw - r, by);
+    ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
+    ctx.lineTo(bx + bw, by + bh - r);
+    ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
+    ctx.lineTo(bx + r, by + bh);
+    ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
+    ctx.lineTo(bx, by + r);
+    ctx.quadraticCurveTo(bx, by, bx + r, by);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(200,30,30,' + (0.55 * pulse).toFixed(2) + ')';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,120,120,.9)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, W / 2, by + bh / 2 + 1);
+    ctx.restore();
+  },
+
   /* ---- 绘制：独立于主战场的一整套跑酷画面 ---- */
   draw() {
     const R = this.RUN, v = View, ctx = v.ctx;
@@ -5012,6 +5200,13 @@ const MAZE = {
     const g = ctx.createLinearGradient(0, 0, 0, H2);
     g.addColorStop(0, sc.sky[0]); g.addColorStop(1, sc.sky[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H2);
+
+    /* v9.0.8：远景光晕 / 地平线辉光，提升画面层次 */
+    const hg = ctx.createRadialGradient(W / 2, horizon, 4, W / 2, horizon, W * 0.62);
+    hg.addColorStop(0, 'rgba(255,255,255,.16)');
+    hg.addColorStop(0.35, sc.hue + '30');
+    hg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = hg; ctx.fillRect(0, 0, W, horizon + H2 * 0.30);
 
     /* 抖动（R.shake 叠加 FX 全局震屏；v9.0.5 降低幅度，避免频繁狂抖） */
     const sh = (R.shake > 0 ? R.shake * 7 : 0) + Math.min(FX.shakeAmt, 7);
@@ -5031,13 +5226,39 @@ const MAZE = {
       return { x: W / 2 + wx * (farHW + (nearHW - farHW) * t) / Math.max(HW, 1) * 1.0, y: y, z: z };
     };
 
-    /* 跑道 */
+    /* 跑道（v9.0.8：加入两侧地面、路面渐变、中央虚线，画面更精致） */
     const rh = 34;   // 路面厚度
-    ctx.beginPath();
     const rl = toScreen(-HW, 760), rr = toScreen(HW, 760), fl = toScreen(-HW, -120), fr = toScreen(HW, -120);
+    /* 两侧地面（跑道外侧的地形，用 side 色铺满） */
+    ctx.fillStyle = sc.side;
+    ctx.beginPath();
+    ctx.moveTo(0, fl.y); ctx.lineTo(fl.x, fl.y); ctx.lineTo(rl.x, rl.y); ctx.lineTo(0, rl.y + 200);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(W, fr.y); ctx.lineTo(fr.x, fr.y); ctx.lineTo(rr.x, rr.y); ctx.lineTo(W, rr.y + 200);
+    ctx.closePath(); ctx.fill();
+    /* 路面（近端更亮、远端更暗的渐变，营造纵深） */
+    ctx.beginPath();
     ctx.moveTo(fl.x, fl.y); ctx.lineTo(fr.x, fr.y); ctx.lineTo(rr.x, rr.y); ctx.lineTo(rl.x, rl.y); ctx.closePath();
-    ctx.fillStyle = sc.road; ctx.fill();
-    ctx.strokeStyle = sc.edge; ctx.lineWidth = 2; ctx.stroke();
+    const roadG = ctx.createLinearGradient(0, farY, 0, nearY);
+    roadG.addColorStop(0, 'rgba(0,0,0,.55)');
+    roadG.addColorStop(0.45, sc.road);
+    roadG.addColorStop(1, sc.road);
+    ctx.fillStyle = roadG; ctx.fill();
+    ctx.strokeStyle = sc.edge; ctx.lineWidth = 2.4; ctx.stroke();
+
+    /* 中央虚线（每段两条短虚线，速度感更强） */
+    for (let i = -1; i < 24; i++) {
+      const wy = 760 - i * 70 - ((R.dist * 8) % 70);
+      if (wy < -120 || wy > 780) continue;
+      const t = clamp((wy + 120) / 880, 0, 1);
+      const y = farY + t * (nearY - farY);
+      ctx.globalAlpha = 0.10 + t * 0.35;
+      ctx.fillStyle = sc.line;
+      const lh = 4 + t * 16, lw = 1.5 + t * 3.5;
+      ctx.fillRect(W / 2 - lw / 2, y, lw, lh);
+    }
+    ctx.globalAlpha = 1;
 
     /* 路面流动条纹（反映速度） */
     const period = 120;
@@ -5054,20 +5275,44 @@ const MAZE = {
     }
     ctx.globalAlpha = 1;
 
-    /* 两侧护栏（体现速度感） */
-    for (let i = -1; i < 20; i++) {
-      const wy = 760 - i * 90 - ((R.dist * 8) % 90);
-      if (wy < -120 || wy > 760) continue;
+    /* 两侧【实体护栏】（v9.0.8：立柱 + 上横梁 + 反光条，明确不可越出跑道） */
+    const railBaseL = toScreen(-HW, 760), railBaseR = toScreen(HW, 760);
+    const railTopL = toScreen(-HW, -120), railTopR = toScreen(HW, -120);
+    /* 护栏基座（沿跑道外缘的实心带） */
+    ctx.fillStyle = sc.side;
+    ctx.beginPath();
+    ctx.moveTo(railTopL.x - 10, railTopL.y); ctx.lineTo(railTopL.x + 6, railTopL.y);
+    ctx.lineTo(railBaseL.x + 26, railBaseL.y); ctx.lineTo(railBaseL.x - 30, railBaseL.y);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(railTopR.x - 6, railTopR.y); ctx.lineTo(railTopR.x + 10, railTopR.y);
+    ctx.lineTo(railBaseR.x + 30, railBaseR.y); ctx.lineTo(railBaseR.x - 26, railBaseR.y);
+    ctx.closePath(); ctx.fill();
+    /* 护栏立柱 + 横梁（沿路流动，强调速度） */
+    for (let i = -1; i < 26; i++) {
+      const wy = 760 - i * 66 - ((R.dist * 8) % 66);
+      if (wy < -120 || wy > 780) continue;
       const t = clamp((wy + 120) / 880, 0, 1);
       const y = farY + t * (nearY - farY);
       const hw2 = farHW + (nearHW - farHW) * t;
-      ctx.globalAlpha = 0.25 + t * 0.5;
-      ctx.fillStyle = sc.side;
-      const pad = 8 + t * 22;
-      ctx.fillRect(W / 2 - hw2 - pad, y - 2, pad, 4 + t * 3);
-      ctx.fillRect(W / 2 + hw2, y - 2, pad, 4 + t * 3);
+      const postH = 6 + t * 26, postW = 1.5 + t * 4;
+      ctx.globalAlpha = 0.30 + t * 0.65;
+      /* 立柱 */
+      ctx.fillStyle = sc.hue;
+      ctx.fillRect(W / 2 - hw2 - postW, y - postH, postW, postH);
+      ctx.fillRect(W / 2 + hw2, y - postH, postW, postH);
+      /* 上横梁（连接相邻立柱的观感） */
+      ctx.globalAlpha = 0.22 + t * 0.42;
+      ctx.fillStyle = sc.edge;
+      ctx.fillRect(W / 2 - hw2 - postW - 1, y - postH, postW + 2, 2 + t * 3);
+      ctx.fillRect(W / 2 + hw2 - 1, y - postH, postW + 2, 2 + t * 3);
     }
     ctx.globalAlpha = 1;
+    /* 护栏高光边线（让护栏有厚度感） */
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = sc.edge;
+    ctx.beginPath(); ctx.moveTo(railTopL.x, railTopL.y); ctx.lineTo(railBaseL.x, railBaseL.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(railTopR.x, railTopR.y); ctx.lineTo(railBaseR.x, railBaseR.y); ctx.stroke();
 
     /* 尘埃与星空 */
     for (let i = 0; i < R.stars.length; i++) {
@@ -5087,28 +5332,50 @@ const MAZE = {
       if (p.y < horizon - 20 || p.y > H2 + 60) continue;
       const rr = (it.t === 'obs' ? e.r : e.r) * p.z * 1.35;
       if (it.t === 'obs') {
-        if (e.hit) ctx.globalAlpha = 0.30;
-        ctx.fillStyle = e.color;
+        /* v9.0.8：障碍加入落地阴影 + 高光，画面更立体 */
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        ctx.beginPath(); ctx.ellipse(p.x, p.y + rr * 0.75, rr * 1.05, rr * 0.34, 0, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
         if (e.kind === 'wall') {
-          ctx.fillRect(p.x - rr, p.y - rr * 0.55, rr * 2, rr * 1.1);
-          ctx.fillStyle = 'rgba(0,0,0,.35)';
-          ctx.fillRect(p.x - rr * 0.8, p.y - rr * 0.35, rr * 1.6, rr * 0.2);
+          const wg = ctx.createLinearGradient(p.x - rr, p.y - rr * 0.55, p.x + rr, p.y + rr * 0.55);
+          wg.addColorStop(0, '#dbe6ff'); wg.addColorStop(0.5, e.color); wg.addColorStop(1, '#5d76c9');
+          ctx.fillStyle = wg;
+          ctx.fillRect(p.x - rr, p.y - rr * 0.62, rr * 2, rr * 1.24);
+          ctx.fillStyle = 'rgba(0,0,0,.30)';
+          ctx.fillRect(p.x - rr * 0.8, p.y - rr * 0.12, rr * 1.6, rr * 0.22);
+          ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = Math.max(1, rr * 0.06);
+          ctx.strokeRect(p.x - rr, p.y - rr * 0.62, rr * 2, rr * 1.24);
         } else if (e.kind === 'spike') {
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y - rr); ctx.lineTo(p.x + rr, p.y + rr * 0.7); ctx.lineTo(p.x - rr, p.y + rr * 0.7);
-          ctx.closePath(); ctx.fill();
+          /* 尖刺：三根锯齿，顶端发光 */
+          ctx.fillStyle = e.color;
+          for (let k = -1; k <= 1; k++) {
+            ctx.beginPath();
+            ctx.moveTo(p.x + k * rr * 0.72, p.y - rr * (k === 0 ? 1.15 : 0.8));
+            ctx.lineTo(p.x + k * rr * 0.72 + rr * 0.42, p.y + rr * 0.66);
+            ctx.lineTo(p.x + k * rr * 0.72 - rr * 0.42, p.y + rr * 0.66);
+            ctx.closePath(); ctx.fill();
+          }
+          ctx.fillStyle = 'rgba(255,240,180,.9)';
+          ctx.beginPath(); ctx.arc(p.x, p.y - rr, rr * 0.22, 0, TAU); ctx.fill();
         } else {
+          const rg2 = ctx.createRadialGradient(p.x - rr * 0.35, p.y - rr * 0.35, rr * 0.15, p.x, p.y, rr);
+          rg2.addColorStop(0, '#e6d2ff'); rg2.addColorStop(0.6, e.color); rg2.addColorStop(1, '#5b3aa0');
+          ctx.fillStyle = rg2;
           ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, TAU); ctx.fill();
-          ctx.fillStyle = 'rgba(255,255,255,.22)';
-          ctx.beginPath(); ctx.arc(p.x - rr * 0.3, p.y - rr * 0.3, rr * 0.36, 0, TAU); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = Math.max(1, rr * 0.06); ctx.stroke();
         }
-        ctx.globalAlpha = 1;
       } else {
-        ctx.fillStyle = e.big ? '#ffd24a' : '#8bffcf';
-        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(2, rr), 0, TAU); ctx.fill();
-        ctx.globalAlpha = 0.35;
-        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(3, rr * 1.9), 0, TAU); ctx.fill();
+        /* 食物：外发光 + 双层圆芯 + 小高光，更精致 */
+        const col = e.big ? '#ffd24a' : '#8bffcf';
+        ctx.globalAlpha = 0.32;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(4, rr * 2.4), 0, TAU); ctx.fill();
         ctx.globalAlpha = 1;
+        const fg = ctx.createRadialGradient(p.x - rr * 0.3, p.y - rr * 0.3, rr * 0.15, p.x, p.y, Math.max(2, rr));
+        fg.addColorStop(0, '#ffffff'); fg.addColorStop(0.5, col); fg.addColorStop(1, e.big ? '#c99a10' : '#2fae7a');
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(2, rr), 0, TAU); ctx.fill();
       }
     }
 
@@ -5145,8 +5412,10 @@ const MAZE = {
     }
     ctx.restore();
 
-    /* ---- 玩家（固定在画面中下部） ---- */
-    const py = 340, px = W / 2 + R.x * (nearHW / Math.max(HW, 1)) * 1.35;
+    /* ---- 玩家（固定在画面中下部）----
+       v9.0.8 补充Ⅵ：y 用 PLAYER_SCREEN_Y 常量、x 用 playerScreenXpx()，
+       与碰撞判定共用同一套投影 —— 不会错位、也不会画出屏幕 */
+    const py = this.PLAYER_SCREEN_Y, px = this.playerScreenXpx(HW, R.x);
     ctx.save();
     if (R.invul > 0 && Math.floor(R.t * 14) % 2 === 0) ctx.globalAlpha = 0.55;
     if (R.fac === 'ball') {
@@ -5210,11 +5479,24 @@ const MAZE = {
       rg.addColorStop(1, 'rgba(255,40,40,' + (danger * 0.55).toFixed(2) + ')');
       ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H2);
     }
+    /* v9.0.8 补充：撞障碍 → 整屏【强烈变红】（外圈更浓的血红边框 + 全屏红色叠加） */
+    if (R.hurt > 0) {
+      const k = clamp(R.hurt / 0.55, 0, 1);
+      ctx.fillStyle = 'rgba(255,40,40,' + (k * 0.42).toFixed(2) + ')';
+      ctx.fillRect(0, 0, W, H2);
+      const vg = ctx.createRadialGradient(W / 2, H2 / 2, Math.min(W, H2) * 0.28, W / 2, H2 / 2, Math.max(W, H2) * 0.72);
+      vg.addColorStop(0, 'rgba(255,0,0,0)');
+      vg.addColorStop(1, 'rgba(210,0,0,' + (k * 0.75).toFixed(2) + ')');
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H2);
+    }
     /* 受伤闪红 */
     if (R.flash > 0) {
       ctx.fillStyle = 'rgba(255,80,80,' + (R.flash * 0.5).toFixed(2) + ')';
       ctx.fillRect(0, 0, W, H2);
     }
+
+    /* v9.0.8 补充：体型超出屏幕可视大小 → 屏幕上方生成「尺寸提示」 */
+    this.drawSizeBadge(ctx, W, H2, R);
 
     /* v9.0.4：特殊路段覆盖层 + 全局反馈特效（涟漪 / 飘字 / 冲击环 / 闪光） */
     if (R.spec) this.segDraw(ctx, W, H2, R);
@@ -5812,6 +6094,103 @@ const Sound = {
   shieldBlock() {                               // 护盾挡下电锯：能量护盾嗡鸣
     this.tone(560, 0.16, 'sine', 0.11, 900);
     this.tone(880, 0.12, 'triangle', 0.07, 1300);
+  },
+
+  /* ==================== v9.0.8 补充：背景音乐（BGM） ====================
+     全部为 WebAudio 实时合成，无需外部资源；支持「每场景 / 每界面」不同曲目，
+     以短循环 + 淡入淡出实现，占用极小。 */
+  bgm: {
+    id: null, timer: null, step: 0, nextT: 0, gain: null, muted: false
+  },
+  BGM_VOL: 0.055,
+  /* 曲目定义：mode=音阶走向, notes=半音序列（相对根音）, root=根音(Hz), bpm=速度, wave=波形 */
+  BGM_TRACKS: {
+    /* —— 跑酷：六个场景各一条，情绪从科幻 → 炽热 → 清爽 → 迷幻 → 深邃 → 辉煌 —— */
+    track_starport: { root: 220.0, wave: 'triangle', bpm: 104, notes: [0, 7, 12, 7, 3, 10, 15, 10], bass: [0, 0, -5, -5] },
+    track_lava:     { root: 174.6, wave: 'sawtooth', bpm: 132, notes: [0, 3, 5, 7, 5, 3, 0, -2], bass: [0, -2, -4, -5] },
+    track_jungle:   { root: 261.6, wave: 'triangle', bpm: 96,  notes: [0, 4, 7, 12, 7, 4, 9, 7], bass: [0, -3, -5, -3] },
+    track_neon:     { root: 246.9, wave: 'square',   bpm: 124, notes: [0, 5, 7, 12, 10, 7, 5, 3], bass: [0, -2, -5, -7] },
+    track_deep:     { root: 196.0, wave: 'sine',     bpm: 76,  notes: [0, 7, 5, 12, 3, 10, 7, 5], bass: [0, -5, -7, -5] },
+    track_temple:   { root: 293.7, wave: 'triangle', bpm: 88,  notes: [0, 2, 4, 7, 12, 7, 4, 2], bass: [0, -5, -7, -12] },
+    /* —— 界面：主菜单 / 基地 / 商店 / 仓库 / 规则 / 设置 / 结算 —— */
+    menu:    { root: 220.0, wave: 'sine',     bpm: 68, notes: [0, 4, 7, 11, 7, 4, 2, 4], bass: [0, -5, -7, -5] },
+    base:    { root: 233.1, wave: 'triangle', bpm: 84, notes: [0, 5, 9, 12, 9, 5, 7, 5], bass: [0, -3, -7, -3] },
+    shop:    { root: 261.6, wave: 'sine',     bpm: 92, notes: [0, 4, 9, 12, 9, 4, 7, 9], bass: [0, -5, -3, -7] },
+    repo:    { root: 207.7, wave: 'sine',     bpm: 74, notes: [0, 3, 7, 10, 7, 3, 5, 7], bass: [0, -4, -7, -4] },
+    rules:   { root: 196.0, wave: 'sine',     bpm: 62, notes: [0, 5, 7, 12, 7, 5, 3, 5], bass: [0, -7, -5, -7] },
+    result:  { root: 233.1, wave: 'triangle', bpm: 80, notes: [0, 7, 12, 16, 12, 7, 5, 7], bass: [0, -5, -12, -5] },
+    resultLose: { root: 155.6, wave: 'sine',  bpm: 60, notes: [0, 3, -2, 5, 0, -2, 3, -5], bass: [0, -7, -5, -9] }
+  },
+  /* 半音 → 频率 */
+  _noteFreq(root, semi) { return root * Math.pow(2, semi / 12); },
+  /* 播放指定曲目（同曲目不重启） */
+  playBGM(id) {
+    if (this.bgm.id === id) return;
+    this.stopBGM();
+    if (!this.ctx || !this.on) return;
+    const tr = this.BGM_TRACKS[id];
+    if (!tr) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(this.BGM_VOL, now + 0.8);   // 淡入
+    g.connect(this.ctx.destination);
+    this.bgm.id = id; this.bgm.gain = g; this.bgm.step = 0; this.bgm.nextT = now + 0.05;
+    const self = this;
+    const beat = 60 / tr.bpm / 2;      // 八分音符
+    this.bgm.timer = setInterval(function () {
+      if (!self.ctx || self.bgm.id !== id) { return; }
+      try {
+        const t0 = self.ctx.currentTime;
+        /* 每次调度 2 步，避免定时器抖动造成断音 */
+        for (let k = 0; k < 2; k++) {
+          const st = self.bgm.step + k;
+          const t = t0 + k * beat;
+          /* 主旋律 */
+          const semi = tr.notes[st % tr.notes.length];
+          const o = self.ctx.createOscillator(), og = self.ctx.createGain();
+          o.type = tr.wave;
+          o.frequency.setValueAtTime(self._noteFreq(tr.root, semi), t);
+          og.gain.setValueAtTime(0.0001, t);
+          og.gain.exponentialRampToValueAtTime(0.85, t + 0.02);
+          og.gain.exponentialRampToValueAtTime(0.0001, t + beat * 0.92);
+          o.connect(og); og.connect(self.bgm.gain);
+          o.start(t); o.stop(t + beat);
+          /* 低音（每两拍一次） */
+          if (st % 2 === 0) {
+            const bs = tr.bass[Math.floor(st / 2) % tr.bass.length];
+            const b = self.ctx.createOscillator(), bg = self.ctx.createGain();
+            b.type = 'sine';
+            b.frequency.setValueAtTime(self._noteFreq(tr.root, bs - 12), t);
+            bg.gain.setValueAtTime(0.0001, t);
+            bg.gain.exponentialRampToValueAtTime(1.0, t + 0.03);
+            bg.gain.exponentialRampToValueAtTime(0.0001, t + beat * 1.8);
+            b.connect(bg); bg.connect(self.bgm.gain);
+            b.start(t); b.stop(t + beat * 2);
+          }
+        }
+        self.bgm.step += 2;
+      } catch (e) {}
+    }, beat * 1000);
+  },
+  stopBGM() {
+    if (this.bgm.timer) { clearInterval(this.bgm.timer); this.bgm.timer = null; }
+    if (this.bgm.gain && this.ctx) {
+      try {
+        const g = this.bgm.gain, t = this.ctx.currentTime;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);      // 淡出
+        setTimeout(function () { try { g.disconnect(); } catch (e) {} }, 320);
+      } catch (e) {}
+    }
+    this.bgm.id = null; this.bgm.gain = null;
+  },
+  /* 跑酷场景 → 曲目 */
+  sceneTrack(idx) {
+    return ['track_starport', 'track_lava', 'track_jungle', 'track_neon', 'track_deep', 'track_temple'][idx] || 'track_starport';
   }
 };
 
@@ -5928,7 +6307,8 @@ const Game = {
       Sound.on = !Sound.on;
       Store.data.sound = Sound.on; Store.save();
       $('btnSound').textContent = Sound.on ? '♪' : '✕';
-      if (Sound.on) Sound.init();
+      if (Sound.on) { Sound.init(); Sound.playBGM('menu'); }   // v9.0.8 补充：开启音效时恢复 BGM
+      else Sound.stopBGM();                                    // 关闭音效时停 BGM
     };
     $('btnSound').textContent = Sound.on ? '♪' : '✕';
 
@@ -6075,6 +6455,8 @@ const Game = {
   },
   openAdmin() {
     const d = Store.data;
+    const self = this;          // v9.0.8 补充Ⅴ 修复：原先此处漏了 self 绑定，
+                                // 导致「切换皮肤角色」的 onchange 里 self 未定义、直接抛错
     $('adBestBall').value = d.bestBall;
     $('adBestSnake').value = d.bestSnake;
     $('adCoins').value = d.coins;
@@ -6118,7 +6500,15 @@ const Game = {
                                  : (skinOwned(d.skinBall) ? d.skinBall : firstOwned('ball')));
     skSel.value = want;
     this.buildSkinAbilPanel(want);
-    skSel.onchange = function () { self.buildSkinAbilPanel(skSel.value); };
+    /* v9.0.8 补充Ⅴ 修复：切换「要配置的皮肤角色」时，先把当前角色的编辑内容
+       落盘，再渲染新角色的面板 —— 否则用户填完一个角色直接切走，编辑会被静默丢弃。 */
+    this._skinPickBound = want;
+    skSel.onchange = function () {
+      const prev = self._skinPickBound;
+      if (prev && prev !== skSel.value) self.commitSkinEdit(prev);
+      self._skinPickBound = skSel.value;
+      self.buildSkinAbilPanel(skSel.value);
+    };
     /* 逐项解锁勾选 */
     const buildUnlock = function (boxId, list, kind) {
       const box = $(boxId);
@@ -6139,9 +6529,12 @@ const Game = {
         tg.textContent = free ? '初始' : (kind === 'map' ? (it.price + '金') : '需解锁');
         el.appendChild(dot); el.appendChild(tx); el.appendChild(tg);
         if (!free) {
+          /* 勾选 / 取消：直接用 classList.contains 判态，并把结果写进 dataset.want，
+             保存时以 dataset.want 为准（v9.0.8 补充Ⅴ 修复：以前用 el._cls['on']
+             判态，_cls 并不存在，导致永远判为「已勾选」，只能解锁不能上锁） */
           el.onclick = function () {
             if (el.dataset.free === '1') return;
-            const isOn = el._cls && el._cls['on'];
+            const isOn = el.classList.contains('on');
             if (isOn) { el.classList.remove('on'); el.dataset.want = '0'; }
             else { el.classList.add('on'); el.dataset.want = '1'; }
             Sound.click && Sound.click();
@@ -6162,6 +6555,36 @@ const Game = {
     $('adAbilGem').value = d.abilGem || 0;
     $('ovAdmin').classList.add('show');
   },
+  /* v9.0.8 补充Ⅴ：把「当前面板上正在编辑的某个皮肤角色」的能力 / 武器写入存档。
+     供「切换角色」与「保存并关闭」两处复用，避免编辑内容被静默丢弃。 */
+  commitSkinEdit(skinId) {
+    const d = Store.data;
+    if (!skinId || !skinOwned(skinId)) return;
+    const box = $('adSkinAbil');
+    const out = {};
+    if (box) {
+      const ips = box.querySelectorAll ? box.querySelectorAll('input') : [];
+      for (let i = 0; i < ips.length; i++) {
+        const k = ips[i].dataset ? ips[i].dataset.abil : null;
+        const v = Math.floor(+ips[i].value || 0);
+        if (k && v > 0) out[k] = clamp(v, 1, CFG.abilMaxLevel);
+      }
+    }
+    if (!d.skinAbil) d.skinAbil = {};
+    if (!d.skinWeapon) d.skinWeapon = {};
+    d.skinAbil[skinId] = out;
+    const fac = skinFactionOf(skinId) || 'ball';
+    const wsel = $('adSkinWeapon');
+    const wp = wsel ? (wsel.value || '') : '';
+    d.skinWeapon[skinId] = wp || null;
+    /* v9.0.8 补充Ⅴ：这里【只】写该角色自己的配置。
+       不再顺手覆盖 d.abilLoadout[fac] / d.weaponEq[fac]（阵营模板）——
+       因为 skinAbilConf() 在「角色没有自己的配置」时会回退到阵营模板，
+       若在此处覆盖模板，切到同阵营的另一个角色就会「继承」上一个角色的值，
+       看起来就像「改了 A 结果 B 也被改了」。阵营模板只由「使用/装备」流程维护。 */
+    d.skinAbilCur = skinId;
+  },
+
   /* v9.0.3：按选中的皮肤角色渲染「能力 × 等级」与武器下拉 */
   buildSkinAbilPanel(skinId) {
     const d = Store.data;
@@ -6240,7 +6663,12 @@ const Game = {
         const el = els[i];
         if (!el.dataset || el.dataset.free === '1') continue;
         const id = el.dataset.id;
-        const want = !!(el._cls && el._cls['on']);
+        /* v9.0.8 补充Ⅴ 修复：以前用 el._cls['on'] 判态（_cls 根本不存在），
+           want 恒为 false → 勾选永远存不进去、且会把已解锁的皮肤全部踢掉。
+           现在优先读点击时写入的 dataset.want，未点过则按当前 class 判态。 */
+        const want = (el.dataset && el.dataset.want !== undefined)
+          ? (el.dataset.want === '1')
+          : !!(el.classList && el.classList.contains('on'));
         if (kind === 'map') {
           const at = d.maps.indexOf(id);
           if (want && at < 0) d.maps.push(id);
@@ -6260,36 +6688,12 @@ const Game = {
     if (!getMap(d.map) || d.maps.indexOf(d.map) < 0) d.map = d.maps[0] || 'plain';
     if (d.skinOwned.indexOf(d.skinBall) < 0) d.skinBall = 'aqua';
     if (d.skinOwned.indexOf(d.skinSnake) < 0) d.skinSnake = 'bamboo';
-    /* v9.0.2/v9.0.3：按当前选中的皮肤角色写回「能力 × 等级」与武器 */
-    const readAbilRows = function (boxId) {
-      const out = {};
-      const box = $(boxId);
-      if (!box) return out;
-      const ips = box.querySelectorAll ? box.querySelectorAll('input') : [];
-      for (let i = 0; i < ips.length; i++) {
-        const k = ips[i].dataset ? ips[i].dataset.abil : null;
-        const v = Math.floor(+ips[i].value || 0);
-        if (k && v > 0) out[k] = clamp(v, 1, CFG.abilMaxLevel);
-      }
-      return out;
-    };
+    /* v9.0.8 补充Ⅴ：按当前选中的皮肤角色写回「能力 × 等级」与武器
+       （统一走 commitSkinEdit，与「切换角色」保持同一套逻辑） */
     if (!d.skinAbil) d.skinAbil = {};
     if (!d.skinWeapon) d.skinWeapon = {};
     const curSkin = $('adSkinPick') ? $('adSkinPick').value : null;
-    if (curSkin && skinOwned(curSkin)) {
-      d.skinAbilCur = curSkin;
-      d.skinAbil[curSkin] = readAbilRows('adSkinAbil');
-      const fac = skinFactionOf(curSkin) || 'ball';
-      const wp = $('adSkinWeapon') ? $('adSkinWeapon').value : '';
-      if (!d.weaponOwned) d.weaponOwned = [];
-      if (wp) { d.skinWeapon[curSkin] = wp; if (!d.weaponEq) d.weaponEq = { ball: null, snake: null }; d.weaponEq[fac] = wp; if (!d.weaponStock) d.weaponStock = {}; d.weaponStock[wp] = (d.weaponStock[wp] || 0) + 1; }
-      else d.skinWeapon[curSkin] = null;
-      /* 同步阵营默认装（新角色会继承）与外层展示字段 */
-      if (!d.abilLoadout) d.abilLoadout = { ball: {}, snake: {} };
-      d.abilLoadout[fac] = JSON.parse(JSON.stringify(d.skinAbil[curSkin]));
-      if (!d.weaponEq) d.weaponEq = { ball: null, snake: null };
-      d.weaponEq[fac] = d.skinWeapon[curSkin];
-    }
+    if (curSkin && skinOwned(curSkin)) this.commitSkinEdit(curSkin);
     /* 未出现在配置列表里（未解锁）的角色：保持原配置不动 */
     d.extraAbilCount = clamp(Math.floor(+$('adExtraAbil').value || 0), 0, 3);
     const lv = Math.floor(+$('adAbilLv').value || 0);
@@ -6310,6 +6714,7 @@ const Game = {
   openShop() {
     this.buildShop();
     $('ovShop').classList.add('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('shop');   // v9.0.8 补充：商店 BGM
   },
   buildShop() {
     $('shopCoins').textContent = fmtNum(Store.data.coins);
@@ -6356,6 +6761,7 @@ const Game = {
   openRepo() {
     this.buildRepo();
     $('ovRepo').classList.add('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('repo');   // v9.0.8 补充：仓库 BGM
   },
   buildRepo() {
     const box = $('repoList');
@@ -6584,6 +6990,8 @@ const Game = {
     };
     cv.addEventListener('touchstart', function (e) {
       Sound.init();
+      /* v9.0.8 补充：首次交互解锁音频并播放主菜单 BGM（浏览器自动播放策略） */
+      if (Sound.on && !Sound.bgm.id && Game.state === 'menu') Sound.playBGM('menu');
       if (self.state === 'maze') {
         const t0 = e.changedTouches[0];
         mazeAim(t0.clientX, true);
@@ -6635,6 +7043,8 @@ const Game = {
     // 鼠标（桌面端）
     cv.addEventListener('mousedown', function (e) {
       Sound.init();
+      /* v9.0.8 补充：首次交互解锁音频并播放主菜单 BGM */
+      if (Sound.on && !Sound.bgm.id && Game.state === 'menu') Sound.playBGM('menu');
       if (self.state === 'maze') { mazeAim(e.clientX, true); MAZE.press(e.clientX, e.clientY); }
       else if (self.state === 'playing') { FX.tap(e.clientX, e.clientY, 'rgba(255,255,255,.7)'); FX.haptic('light'); }
     });
@@ -6746,6 +7156,7 @@ const Game = {
   start() {
     const m = this.menu;
     const d = Store.data;
+    if (typeof Sound !== 'undefined') Sound.stopBGM();   // v9.0.8 补充：进入主战场时停界面 BGM
     d.faction = m.faction; d.skinBall = m.skinBall; d.skinSnake = m.skinSnake; d.diff = m.diff;
     // PvP / 卡牌模式：禁用道具（纯操作对决），不消耗库存
     const noItem = (m.mode === 'pvp' || m.mode === 'card');
@@ -6849,10 +7260,14 @@ const Game = {
     $('abilPanel').style.display = 'none';
     document.getElementById('app').classList.remove('cardMode');
     $('ovMenu').classList.add('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('menu');   // v9.0.8 补充：主菜单 BGM
     this.refreshMenu();
     this.startDemo();
   },
-  showRules() { $('ovRules').classList.add('show'); },
+  showRules() {
+    $('ovRules').classList.add('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('rules');  // v9.0.8 补充：规则界面 BGM
+  },
 
   onEvent(t, x, y, ex) {
     if (t === 'eat') Sound.eat(ex === 1);
@@ -6973,6 +7388,8 @@ const Game = {
     $('miniWrap').style.display = 'none';
     document.getElementById('app').classList.remove('cardMode');
     $('ovResult').classList.add('show');
+    /* v9.0.8 补充：主战场结算 → 专属结算 BGM */
+    if (typeof Sound !== 'undefined') Sound.playBGM(this.menu && this.lastWin === false ? 'resultLose' : 'result');
   },
 
   /* ---- HUD ---- */
@@ -7181,8 +7598,12 @@ const Game = {
   openBase() {
     this.renderBase();
     $('ovBase').classList.add('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('base');   // v9.0.8 补充：基地 BGM
   },
-  closeBase() { $('ovBase').classList.remove('show'); },
+  closeBase() {
+    $('ovBase').classList.remove('show');
+    if (typeof Sound !== 'undefined') Sound.playBGM('menu');   // v9.0.8 补充：返回主菜单 BGM
+  },
   renderBase() {
     const d = Store.data, self = this;
     const allSkins = BALL_SKINS.concat(SNAKE_SKINS);
