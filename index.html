@@ -777,7 +777,7 @@ canvas#game{position:absolute; inset:0; width:100%; height:100%; display:block; 
   <div class="overlay" id="ovRepo">
     <div class="card glass">
       <div class="title" style="font-size:22px">仓库</div>
-      <div class="subtitle">装备的道具将在下一局开局消耗并生效</div>
+      <div class="subtitle">道具在下一局开局消耗生效 · 武器为消耗品，点「使用」装到当前选中的角色</div>
       <div id="repoList"></div>
       <div class="actions"><button class="btn" id="btnCloseRepo">关闭</button></div>
     </div>
@@ -982,6 +982,14 @@ const CFG = {
   snakeMinSeg: 8,        // 低于该体节数则断尾致死
   segMaxMass: 3,         // 单节身体可贡献的吞噬质量上限
   selfCutIdx: 14,        // 可被撞断的最靠前体节
+  /* --- v9.0.8 补充：电锯电量（带久持续消耗，耗尽电锯消失） --- */
+  sawDrainBase: 1 / 70,  // 每秒基础耗电（满电 ≈70 秒），按档位 ×drain 系数
+  sawCutDrain: 0.06,     // 每锯一次额外耗电
+  sawClashDrain: 0.30,   // 双电锯对冲时每秒「极快」耗电（约为满电的 3.3 秒）
+  sawShieldCost: 12,     // 电锯撞护盾：每秒消耗的护盾秒数（护盾耗尽即被锯断）
+  sawFleeT: 3.2,         // 被电锯锯断后「加速逃跑」的持续时间（秒）
+  sawFleeMul: 1.45,      // 被锯后逃跑速度倍率
+  sawMinKeepSeg: 3,      // 被电锯锯后至少为幸存者保留的体节（避免整条消失）
   bodyGap: 0.72,         // 身体判定半径系数
   snakeSegMass: 6,       // 每节身体质量
   snakeHeadMass: 60,     // 蛇头初始质量
@@ -1319,11 +1327,11 @@ const WEAPONS = {
     { id: 'k5', name: '雷神飞刀', n: 5, pow: 1.8, color: '#ffe14a', price: 1400, desc: '环绕 5 把 · 雷霆重创' }
   ],
   snake: [
-    { id: 's1', name: '钢齿电锯', cd: 2.6, pow: 0.9, color: '#9aa7b8', price: 300, desc: '切割间隔 2.6 秒' },
-    { id: 's2', name: '高速电锯', cd: 1.8, pow: 1.0, color: '#7fe7ff', price: 520, desc: '切割间隔 1.8 秒' },
-    { id: 's3', name: '烈焰电锯', cd: 1.5, pow: 1.5, color: '#ff8a4a', price: 880, desc: '切割间隔 1.5 秒 · 灼烧' },
-    { id: 's4', name: '寒霜电锯', cd: 1.2, pow: 1.3, color: '#9ff0ff', price: 1150, desc: '切割间隔 1.2 秒 · 冰封' },
-    { id: 's5', name: '等离子锯', cd: 0.8, pow: 2.0, color: '#d78bff', price: 1800, desc: '切割间隔 0.8 秒 · 毁灭' }
+    { id: 's1', name: '钢齿电锯', cd: 2.6, pow: 0.9, cuts: 10, drain: 0.8, color: '#9aa7b8', price: 300, desc: '间隔 2.6 秒 · 续航久' },
+    { id: 's2', name: '高速电锯', cd: 1.8, pow: 1.0, cuts: 11, drain: 1.0, color: '#7fe7ff', price: 520, desc: '间隔 1.8 秒 · 续航中' },
+    { id: 's3', name: '烈焰电锯', cd: 1.5, pow: 1.5, cuts: 12, drain: 1.3, color: '#ff8a4a', price: 880, desc: '间隔 1.5 秒 · 灼烧 · 耗电快' },
+    { id: 's4', name: '寒霜电锯', cd: 1.2, pow: 1.3, cuts: 14, drain: 1.7, color: '#9ff0ff', price: 1150, desc: '间隔 1.2 秒 · 冰封 · 耗电快' },
+    { id: 's5', name: '等离子锯', cd: 0.8, pow: 2.0, cuts: 16, drain: 2.4, color: '#d78bff', price: 1800, desc: '间隔 0.8 秒 · 毁灭 · 耗电极快' }
   ]
 };
 /* v9.0.1：每个皮肤兑换所需碎片（50~100） */
@@ -1448,7 +1456,8 @@ const Store = {
       fusionGem: 0,               // 合成宝石
       abilGem: 0,                 // 能力宝石
       fusedAbil: { ball: null, snake: null },  // 合成得到的第二能力
-      weaponOwned: [],            // 已拥有的武器 id
+      weaponOwned: [],            // 已拥有的武器 id（v9.0.8 起仅作旧档迁移来源）
+      weaponStock: {},            // v9.0.8：武器仓库库存 { weaponId: 件数 }（消耗品：本局用完报废）
       weaponEq: { ball: null, snake: null },   // 当前装载的武器
       forcedWeather: 'auto',      // 修改器：auto / none / meteor / feast / hole / storm
       forcedWeatherDur: 0,        // 修改器：天气持续秒数（0=自动随机 25~90）
@@ -1515,6 +1524,12 @@ const Store = {
     };
     migrate(d.skinBall, 'ball');
     migrate(d.skinSnake, 'snake');
+    /* v9.0.8：武器改为「仓库库存」消耗品 —— 旧档的 weaponOwned 每种迁移为 1 件库存 */
+    if (!d.weaponStock || typeof d.weaponStock !== 'object') {
+      d.weaponStock = {};
+      const ow = Array.isArray(d.weaponOwned) ? d.weaponOwned : [];
+      for (let i = 0; i < ow.length; i++) if (ow[i]) d.weaponStock[ow[i]] = Math.max(1, d.weaponStock[ow[i]] || 0);
+    }
     if (typeof d.mazeBest !== 'number') d.mazeBest = 0;
     if (typeof d.mazeRuns !== 'number') d.mazeRuns = 0;
     this.data = d;
@@ -1661,7 +1676,7 @@ const RULES_HTML = [
   '<h5>五（续）· v8 新增吞噬机制</h5>',
   '<ul>',
   '<li><b>蛇头渐进啃食球体</b>：蛇头贴上球体后，按<b>接触占比</b>每秒啃掉球体的一部分质量（占比越高啃得越快）；球体被啃到低于阈值即死亡。若蛇头<b>触到球的中心</b>，则直接整颗吞下。</li>',
-  '<li><b>蛇头碰他蛇身体 → 化为食物</b>：蛇头撞到<b>其它</b>蛇的身体，该蛇立刻化为与其质量<b>相当的食物</b>（供任意一方拾取）；撞到<b>自己</b>的身体不会触发。</li>',
+  '<li><b>蛇头碰他蛇身体 → 化为食物</b>（v9.0.8 修正判定方向）：蛇头撞到<b>其它</b>蛇的身体，<b>出头的一方</b>立刻化为与其质量相当的食物（供任意一方拾取）；反之敌方的头撞到你的身体也是<b>敌方</b>化为食物——双向对称、谁出头谁死；撞到<b>自己</b>的身体不会触发。</li>',
   '<li><b>撞边界化为食物</b>：球或蛇碰到战场边界，不会凭空消失，而是化为与<b>自身此刻质量相当的食物</b>（生成在边界内侧），留给后来者。</li>',
   '<li><b>v8.5 小球克制蛇</b>：小球贴着蛇身累计 <b>3 秒</b> → 接触点之后的蛇尾段断下化为等质量食物；蛇越长，吃等量食物长得越少；场上<b>蛇/球总质量差</b>越大，大的一方成长越慢；蛇越长移动越慢。</li>',
   '</ul>',
@@ -1718,7 +1733,12 @@ const RULES_HTML = [
     '· <b>养成</b>：任何局内都会掉落<b>养成碎片</b>（绿色宝石），集满 10 片自动合成 1 颗<b>养成宝石</b>；每 3 局必定再得 1 颗（连续 10 局内上限 10 颗）。养成宝石可为<b>每一项能力升级，最高 10 级</b>，10 级时<b>效果翻倍</b>。<br>' +
     '· <b>养成碎片不再弹提示</b>（v9.0.2）：掉落与拾取全程<b>静默无弹窗</b>，进度改为 HUD 上的 <code>💎 4/10</code> 计数芯片；只有在<b>集满 10 片转成养成宝石</b>时才会提示一次。<br>' +
     '· <b>合成</b>：每 10 局获得 <b>1 颗合成宝石 + 1 颗能力宝石</b>，消耗二者可为当前阵营<b>合成第二个能力</b>——该角色此后拥有<b>两个能力</b>，局内用独立的「<b>副技</b>」键释放（位于主能力键上方，互不重叠）。<br>' +
-    '· <b>武器商店</b>（v9.0.7 仓库制）：购买后武器<b>放入仓库</b>，想用再点「<b>装备</b>」——装备会<b>同步给当前选中的角色</b>，进游戏立即具现（球 = 环绕飞刀，命中砍断蛇身 / 切开球体，<b>每把飞刀用掉即消失</b>；蛇 = 电锯，按冷却反复切割）。已修复旧版「买了武器却不显示」的问题。</li>',
+    '· <b>武器商店</b>（v9.0.8 仓库消耗品制）：购买后武器<b>入仓库</b>（主界面「<b>仓库</b>」按钮可一并查看道具与武器）；点「<b>使用（库存N）</b>」= 取出 1 件装到<b>当前选中的角色皮肤</b>上；<b>本局用过即报废</b>，下次使用需重新购买。球 = 环绕飞刀（每把用掉即消失），命中<b>砍断蛇身 / 切开球体</b>并播放<b>金属命中音效</b>；蛇 = 电锯（<b>带电</b>：带久持续耗电、锯上方有电量条，<b>电量耗尽电锯消失</b>）。<br>' +
+    '· <b>电锯免互撞规则</b>（v9.0.8 补充）：<b>带电时</b>蛇头撞到他蛇身体<b>不受互撞约束</b>，直接<b>锯断对方</b>；<b>电量耗尽后电锯消失</b>，此时再碰他蛇身体就会<b>自己化为食物死亡</b>——有电我锯人，没电我变食物。已修复蛇电锯无法在游戏中出现的问题。<br>' +
+    '· <b>锯断只管「被锯到的那一段」</b>（v9.0.8 补充）：电锯锯蛇时，<b>从锯击点到蛇尾</b>这一整段身体化作食物，<b>蛇头到锯击点的前段完全保留</b>（蛇不死、继续正常游玩）；<b>前段至少保留 3 节</b>，短蛇也不会被清空。<br>' +
+    '· <b>被锯后加速逃跑</b>（v9.0.8 补充）：被电锯锯断的蛇会立刻<b>背对锯击者加速逃离</b>（约 3.2 秒、速度 ×1.45），身上有<b>红色逃跑光环</b>标识。<br>' +
+    '· <b>双电锯对冲</b>（v9.0.8 补充）：两条蛇<b>都带电锯</b>时相碰，<b>谁都不发动切割</b>，改为<b>极快互相消耗电量</b>（每秒约满电的 30%，伴随金属对冲音效与飞溅火花）；直到一方电量先耗尽 → 该方电锯消失，<b>另一方的电锯才发动</b>、锯断对方。<br>' +
+    '· <b>电锯 vs 护盾</b>（v9.0.8 补充）：对方有<b>护盾</b>时，电锯<b>不再被免疫</b>，而是<b>持续消耗护盾值</b>（护盾音效）；护盾值被消耗殆尽 → <b>护盾锯破</b>，随后的锯击即可锯断对方。</li>',
   '<li><b>对手匹配</b>（v9.0.1）：<b>PvP 与卡牌</b>每局按你的综合实力（能力等级、武器）自动匹配对手——<b>每 5 局中：1 局比玩家弱、1 局比玩家强、其余 3 局实力相当</b>；对手同样会获得能力增强、额外能力与武器。基础模式与能力模式则按你选择的难度匹配。<br>' +
     '· <b>各角色拥有哪些能力、各是几级</b>（v9.0.2）：控制台里为<b>球阵营</b>与<b>蛇阵营</b>各列一张表，12 种能力逐项填等级（<b>0 = 不拥有</b>，1~10 为等级），两个阵营<b>互不干扰</b>，保存后下一局生效。</li>',
   '<li><b>多能力显示与释放</b>（v9.0.6 兑换制）：能力必须「<b>兑换</b>」后才能释放——<b>初始能力恒拥有</b>，其余能力在控制台对<b>当前角色</b>兑换（填 ≥1 即兑换，等级 1~10）。<br>' +
@@ -1757,6 +1777,12 @@ const RULES_HTML = [
   '<li><b>能力扩充到 12 种</b>（v9.0.2），每种能力有<b>各自的特效颜色与粒子表现</b>：<br>' +
     '· <b>球阵营 6 种</b>：🧲 磁力场（吸附豆子与更小的猎物）、🛡️ 能量护盾（短时无敌）、💥 膨胀爆发（爆发加速冲刺）、🕳️ 重力井（超远距强吸附 + 吞噬判定更易成立）、❄️ 冰封领域（冻结周围对手行动）、🌟 能量新星（震退周围全部对手）。<br>' +
     '· <b>蛇阵营 6 种</b>：⚡ 疾袭（猛冲加速咬向猎物）、🪤 断尾诱饵（甩出尾节化作诱饵）、🌵 荆棘反击（反弹撞击、来犯者被震退）、🧪 毒液之牙（啃食与吞噬大幅增强）、💚 再生蜕皮（补长体节并持续加速）、🫥 幻影潜行（隐匿身形并加速，AI 察觉不到）。</li>',
+  '<li><b>v9.0.8 · 碰撞修正 + 武器仓库消耗品 + 电锯耐久</b>：<br>' +
+    '· <b>碰撞判定修正</b>：蛇头撞到敌方蛇的身体 → <b>出头的一方</b>化为食物死亡；敌方头撞你的身体也是<b>敌方</b>死——双向对称（旧版误判为撞到身体的一方死）。<br>' +
+    '· <b>武器仓库消耗品</b>：购买入仓库（库存 +1）→ 点「使用」取出 1 件装到当前选中的角色 → <b>本局用过即报废</b> → 下次使用需重新购买。<br>' +
+    '· <b>电锯耐久</b>：每锯一次磨损一次，<b>越锯转速越慢、间隔越长</b>（磨损后还会迸火花），耐久耗尽<b>当场损坏报废</b>（有损坏音效与提示）。<br>' +
+    '· <b>电锯可锯蛇身</b>：威力越大断口越靠近头部；飞刀命中与电锯切割均有<b>专属特殊音效</b>与命中飘字。<br>' +
+    '· <b>修复</b>：蛇的电锯此前被误装到球角色上导致<b>无法在游戏中出现</b>，现已修复。</li>',
   '</ul>'
 ].join('');
 /* ---------------------------- 空间网格 ---------------------------- */
@@ -1846,6 +1872,8 @@ class Ball {
     this.mercy = 0;
     this.abil = getSkin('ball', this.skinId).abil || null;
     this.abilT = 0; this.abilCd = 0; this.shieldT = 0; this.magnetT = 0;
+    this.sawClash = null; this.headTouchT = 0;   // v9.0.8 补充：电锯对冲 / 头部持续接触计时
+    this.fleeT = 0;                              // v9.0.8 补充：被电锯锯断后加速逃跑计时
     this.huntT = 0; this.huntLimit = rand(CFG.huntMin, CFG.huntMax); this.huntBan = 0;
     this.ai = { t: rand(0, .2), tx: o.x, ty: o.y, mode: 'food', room: null };
   }
@@ -1900,6 +1928,7 @@ class Ball {
     if (this.abilT > 0) this.abilT -= dt;
     if (this.abilCd > 0) this.abilCd -= dt;
     if (this.shieldT > 0) this.shieldT -= dt;
+    if (this.fleeT > 0) this.fleeT -= dt;        // v9.0.8 补充：被锯后加速逃跑计时
     // 磁力场：吸附附近能量豆（v7：范围扩大 10 倍，更明显）
     if (this.magnetT > 0) {
       this.magnetT -= dt;
@@ -1965,6 +1994,8 @@ class Snake {
     this.mercy = 0;
     this.abil = getSkin('snake', this.skinId).abil || null;
     this.abilT = 0; this.abilCd = 0; this.shieldT = 0; this.thornT = 0;
+    this.sawClash = null; this.headTouchT = 0;   // v9.0.8 补充：电锯对冲 / 头部持续接触计时
+    this.fleeT = 0;                              // v9.0.8 补充：被电锯锯断后加速逃跑计时
     this.huntT = 0; this.huntLimit = rand(CFG.huntMin, CFG.huntMax); this.huntBan = 0;
     this.trail = [{ x: o.x, y: o.y }];
     this.trailLen = 0;
@@ -2101,9 +2132,11 @@ class Snake {
     if (this.abilCd > 0) this.abilCd -= dt;
     if (this.shieldT > 0) this.shieldT -= dt;
     if (this.thornT > 0) this.thornT -= dt;
+    if (this.fleeT > 0) this.fleeT -= dt;        // v9.0.8 补充：被锯后加速逃跑计时
     if (!this.isPlayer) aiThink(this, w, dt);
     this.dir = turnToward(this.dir, this.targetDir, this.maxTurn, dt);
-    const sp = this.speed * (this.dashT > 0 ? 1.6 : 1) * (this.boostT > 0 ? CFG.spitBoostMul : 1);
+    const sp = this.speed * (this.dashT > 0 ? 1.6 : 1) * (this.boostT > 0 ? CFG.spitBoostMul : 1) *
+               (this.fleeT > 0 ? CFG.sawFleeMul : 1);   // v9.0.8 补充：被锯后加速逃跑
     this.x += Math.cos(this.dir) * sp * dt;
     this.y += Math.sin(this.dir) * sp * dt;
     this.pushTrail();
@@ -2413,7 +2446,10 @@ class World {
       const wp = wpId ? weaponById(wpId) : null;
       if (wp && ((e.type === 'ball' && wp.n) || (e.type === 'snake' && wp.cd))) {
         e.weapon = wp;
-        if (e.type === 'ball') e.knives = wp.n; else e.sawCd = 0;
+        /* v9.0.8：球 = 飞刀（每把用掉即消失）；蛇 = 电锯（带耐久 + 电量，带久持续耗电） */
+        if (e.type === 'ball') e.knives = wp.n;
+        else { e.sawCd = 0; e.sawWear = 0; e.sawCharge = 1; }
+        e.weaponUsed = false;
       }
       if (abil2 && !e.abil2) { e.abil2 = abil2; e.abilCd2 = 0; }
     };
@@ -3254,6 +3290,11 @@ class World {
       const s = this.snakes[i];
       if (!s.dead) s.update(s.isPlayer ? dt : aiDt, this);
     }
+    /* v9.0.8 补充：电锯带久持续耗电（所有单位，玩家与 AI 一致） */
+    for (let i = 0; i < this.snakes.length; i++) if (!this.snakes[i].dead) this.updateSaw(this.snakes[i], dt);
+    /* v9.0.8 补充：清空上一帧的对冲标记（本帧 collide 会重新标记并绘制对冲火花） */
+    for (let i = 0; i < this.snakes.length; i++) this.snakes[i].sawClash = null;
+    for (let i = 0; i < this.balls.length; i++) this.balls[i].sawClash = null;
 
     // 2. 障碍（刺球 / 栅栏）
     this.updateObstacles();
@@ -3399,9 +3440,16 @@ class World {
             } else if (B.thornT > 0) {            // 荆棘反弹：来犯者被震退，身体不被咬断
               const ang = Math.atan2(A.y - n.y, A.x - n.x);
               A.x += Math.cos(ang) * 16; A.y += Math.sin(ang) * 16;
+            } else if (A.weapon && A.weapon.cd && A.sawCharge > 0) {
+              /* v9.0.8 补充：装着【带电的电锯】时，不受「蛇头不得碰他蛇身体」规则约束 ——
+                 直接【锯断对方】而非自己被化成食物。若对方有护盾，则先锯护盾（消耗护盾值）。
+                 电锯带久会持续耗电，电耗尽或电锯消失后，再触碰即恢复原判定 → 自己死。 */
+              this.tryWeapon(A, B);
             } else {
-              // v8：蛇头碰到其它蛇身体 → 对方化为等质量食物（碰到自己不会）
-              this.snakeBodyToFood(B, A);
+              /* v9.0.8 修正：蛇头撞到其它蛇的身体 → 【出头的一方】化为等质量食物
+                 （旧版误把身体的主人撞死，现与规则文档一致：谁的头撞上去谁变成食物，双向对称） */
+              this.snakeBodyToFood(A, B);
+              break;
             }
           } else {
             if (B.thornT > 0) {                   // 球撞上荆棘蛇身：被震退
@@ -3421,6 +3469,9 @@ class World {
         } else {
           if (seen[B.id]) continue;
           seen[B.id] = 1;
+          /* v9.0.8 补充：蛇头 ⇄ 蛇头 相碰 —— 「电锯对冲 / 护盾挡锯」优先结算，
+             结算完直接跳过普通吞噬判定（对冲期间两者都不死、不互吞）。 */
+          if (A.type === 'snake' && B.type === 'snake' && this.headClashSaw(A, B, dt)) continue;
           // v9.0.1：武器命中 —— 飞刀（球，消耗一把）/ 电锯（蛇，按冷却）
           if (A.weapon) this.tryWeapon(A, B);
           const br = n.r;
@@ -3506,11 +3557,20 @@ class World {
     this.burst(cx, cy, 18, '#ffd24a', 160);
   }
 
-  /* v8.5：小球贴蛇身 3 秒后，将接触点之后的蛇尾段断下，化为等质量食物 */
-  severSnakeBehind(s, idx) {
+  /* v8.5/v9.0.8：把「接触点(含)之后」的蛇尾段断下，化为等质量食物；
+     前段（蛇头→接触点）完整保留。
+     v9.0.8 补充：电锯锯击【绝不会让蛇整条消失】——
+       ① 保证前段至少保留 CFG.sawMinKeepSeg 节（短蛇也不会被清空）；
+       ② 被锯后触发【加速逃跑】(fleeT)，幸存者可高速撤离。
+     attacker 非空时表示由武器（电锯）造成，走同样的分段逻辑。 */
+  severSnakeBehind(s, idx, attacker) {
     if (s.dead) return;
+    /* 前段至少保留 sawMinKeepSeg 节 —— 防止「整条消失」 */
+    const keep = Math.max(1, CFG.sawMinKeepSeg);
+    if (s.segments - keep < 1) { /* 已经太短：只做逃跑，不切 */ }
+    idx = Math.max(1, Math.min(idx, s.segments - keep));
     const cut = s.segments - idx;
-    if (cut <= 1) return;                       // 太短不处理
+    if (cut <= 0) { this.panicFlee(s); return; }
     const pts = (s.body && s.body.length) ? s.body.slice(idx) : [];
     const total = Math.min(s.massTotal, cut * CFG.segMaxMass + cut * 9);
     let left = total;
@@ -3521,11 +3581,27 @@ class World {
       this.spawnFood(p.x + rand(-14, 14), p.y + rand(-14, 14), m, 1);
       left -= m;
     }
+    const cutPos = pts.length ? pts[0] : { x: s.x, y: s.y };
     s.segments = idx; s.pending = 0; s.flash = 0.3; s.mercy = 1.2;
-    this.burst(s.x, s.y, 16, '#9effd0', 160);
+    this.burst(cutPos.x, cutPos.y, 20, '#9effd0', 200);
     this.trimTrail(s); this.updateBodyOf(s);
-    if (s.segments < CFG.snakeMinSeg) this.killSnake(s, null, 'broken');
-    if (typeof Game !== 'undefined' && Game.toast) Game.toast(s.name + ' 被断尾化食！');
+    /* v9.0.8 补充：前段【依旧活着】—— 不再因体节过少而被击杀，改为加速逃跑 */
+    this.panicFlee(s, attacker ? { x: attacker.x, y: attacker.y } : null);
+    if (typeof Game !== 'undefined' && Game.toast) Game.toast(s.name + ' 被电锯锯断尾部！（加速逃跑）');
+  }
+  /* v9.0.8 补充：被电锯锯断后 → 加速逃跑（AI 背对威胁、短暂提速） */
+  panicFlee(s, threat) {
+    if (s.dead) return;
+    s.fleeT = Math.max(s.fleeT || 0, CFG.sawFleeT);
+    s.boostT = Math.max(s.boostT || 0, CFG.sawFleeT);
+    if (!s.isPlayer) {
+      let ax, ay;
+      if (threat) { ax = s.x - threat.x; ay = s.y - threat.y; }
+      else { ax = -Math.cos(s.dir); ay = -Math.sin(s.dir); }
+      const base = (Math.abs(ax) + Math.abs(ay) < 1e-3) ? rand(0, TAU) : Math.atan2(ay, ax);
+      s.targetDir = base + rand(-0.3, 0.3);
+      if (s.ai) s.ai.t = 0;
+    }
   }
 
   /* ---------------- v9.0.1：武器 ----------------
@@ -3533,25 +3609,78 @@ class World {
      蛇（电锯）：按冷却反复切割，同样砍断蛇身 / 切开球体 */
   tryWeapon(A, B) {
     if (!A.weapon || A.dead || B.dead || B.mercy > 0) return false;
-    if (B.shieldT > 0) return false;                 // 护盾免疫切割
     if (A.type === 'ball') {
       if (A.knives <= 0) return false;
+      if (B.shieldT > 0) return false;               // 护盾免疫飞刀（飞刀不消耗护盾）
       A.knives--;                                    // 用掉一把飞刀
+      A.weaponUsed = true;
       this.weaponHit(A, B, A.weapon);
       return true;
     }
+    /* v9.0.8 补充：电锯撞到【护盾】→ 不再免疫，改为消耗护盾值；
+       护盾值被消耗殆尽 → 护盾破除，下一次锯击即可锯断对方。 */
+    if (B.shieldT > 0) {
+      if (A.sawCd > 0) return false;
+      A.sawCd = (A.weapon.cd || 2);
+      A.sawCharge = Math.max(0, (A.sawCharge === undefined ? 1 : A.sawCharge) - CFG.sawCutDrain);
+      A.weaponUsed = true;
+      const cost = Math.min(B.shieldT, CFG.sawShieldCost / Math.max(1, A.weapon.cd || 2));
+      B.shieldT = Math.max(0, B.shieldT - cost);
+      this.burst(B.x, B.y, 14, '#7fe7ff', 200);
+      this.shockRing(B.x, B.y, '#7fe7ff');
+      if (A.isPlayer || B.isPlayer) {
+        if (typeof Sound !== 'undefined') Sound.shieldBlock && Sound.shieldBlock();
+        if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx) {
+          FX.pop(View.W / 2 + (B.x - View.cam.x) * View.cam.zoom, View.H / 2 + (B.y - View.cam.y) * View.cam.zoom,
+            B.shieldT <= 0 ? '🛡 护盾被锯破!' : '🛡 护盾抵挡中', '#7fe7ff', 16);
+          if (A.isPlayer) FX.haptic('hit');
+        }
+      }
+      if (B.shieldT <= 0 && typeof Game !== 'undefined' && Game.toast) Game.toast(B.name + ' 的护盾被电锯锯破！');
+      if (A.sawCharge <= 0) this.depleteSaw(A);
+      return true;
+    }
     if (A.sawCd > 0) return false;
-    A.sawCd = A.weapon.cd || 2;
+    /* v9.0.8 补充：电锯每次切割额外耗电；电量耗尽由 updateSaw 统一处理（电锯消失） */
+    A.sawCd = (A.weapon.cd || 2);
+    A.sawCharge = Math.max(0, (A.sawCharge === undefined ? 1 : A.sawCharge) - CFG.sawCutDrain);
+    A.weaponUsed = true;
     this.weaponHit(A, B, A.weapon);
+    if (A.sawCharge <= 0) this.depleteSaw(A);
     return true;
+  }
+  /* v9.0.8 补充：电锯电量耗尽 → 电锯消失（本局内报废），此后恢复普通碰撞判定 */
+  depleteSaw(e) {
+    e.weapon = null;
+    e.sawCharge = 0;
+    this.burst(e.x, e.y, 18, '#cfd8e6', 220);
+    this.shockRing(e.x, e.y, '#cfd8e6');
+    if (typeof Sound !== 'undefined') Sound.sawBreak && Sound.sawBreak();
+    if (e.isPlayer) {
+      if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx) {
+        FX.pop(View.W / 2, View.H / 2 - 60, '🔋 电锯电量耗尽！', '#ff8a4a', 20);
+        FX.haptic('hit');
+      }
+      if (typeof Game !== 'undefined' && Game.toast) Game.toast('⚠ 电锯电量耗尽已消失（本局报废），再触碰他蛇身体会死，下次使用需重新购买');
+    }
+  }
+  /* v9.0.8 补充：电锯带久 → 持续耗电（每帧调用），耗尽即消失 */
+  updateSaw(e, dt) {
+    if (!e || e.dead || !e.weapon || !e.weapon.cd) return;
+    const drain = CFG.sawDrainBase * (e.weapon.drain || 1);
+    e.sawCharge = Math.max(0, (e.sawCharge === undefined ? 1 : e.sawCharge) - drain * dt);
+    if (e.sawCharge <= 0) this.depleteSaw(e);
   }
   weaponHit(A, B, wp) {
     const pow = wp.pow || 1;
     if (B.type === 'snake') {
-      // 砍断蛇：断口之后的身体化为等质量食物
-      const idx = Math.max(2, Math.floor(B.segments * 0.55));
-      if (B.segments - idx > 1) this.severSnakeBehind(B, idx);
-      else if (B.segments > 3) this.severSnakeBehind(B, Math.max(2, B.segments - 2));
+      /* v9.0.8 补充：电锯锯断的【只是被锯到的那一段】——
+         从「锯击点」到「蛇尾」的这一段身体化作食物，
+         「蛇头 → 锯击点」的前段完全保留（蛇不死、继续正常游玩）。 */
+      const frac = clamp(0.62 - pow * 0.08, 0.30, 0.58);
+      let idx = Math.floor(B.segments * frac);
+      idx = Math.max(2, Math.min(B.segments - 1, idx));
+      this.severSnakeBehind(B, idx, A);      // 传入攻击者 → 幸存者朝反方向加速逃跑
     } else {
       // 切开球：掉出一部分质量化作食物
       const loss = Math.min(B.mass * 0.28 * pow, Math.max(0, B.mass - CFG.ballMinMass - 8));
@@ -3566,8 +3695,76 @@ class World {
     }
     this.burst(B.x, B.y, 22, wp.color || '#fff', 260);
     this.shockRing(B.x, B.y, wp.color || '#fff');
+    /* v9.0.8：武器特殊音效 + 命中飘字（仅玩家的武器发声/飘字，避免战场嘈杂） */
+    if (A.isPlayer) {
+      if (typeof Sound !== 'undefined') { if (wp.n) { Sound.knifeHit && Sound.knifeHit(); } else { Sound.sawHit && Sound.sawHit(); } }
+      if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx) {
+        FX.pop(View.W / 2 + (B.x - View.cam.x) * View.cam.zoom, View.H / 2 + (B.y - View.cam.y) * View.cam.zoom,
+          wp.n ? '🗡 飞刀命中!' : '⚙ 电锯锯断蛇身!', wp.color || '#fff', 16);
+        FX.haptic('hit');
+      }
+    }
     this.emit('weapon', B.x, B.y, { byPlayer: A.isPlayer });
     if (typeof Game !== 'undefined' && Game.flash) Game.flash(wp.color || '#fff');
+  }
+
+  /* v9.0.8 补充：蛇头⇄蛇头相碰的「电锯对冲 / 护盾挡锯」结算
+     · 护盾：拿电锯的一方持续消耗对方护盾值，护盾耗尽即被锯断（剑盾相持）
+     · 双电锯：两者都不发动切割，改为【极快】互相消耗电量（耐久度），
+       直到某一方电量先耗尽 → 其电锯消失，另一方的电锯才发动、锯断对方。
+     返回 true 表示已接管本次接触（调用方应跳过普通吞噬判定）。 */
+  headClashSaw(A, B, dt) {
+    const dtc = Math.max(dt || 0, 1 / 240);
+    const aSaw = !!(A.weapon && A.weapon.cd && A.sawCharge > 0);
+    const bSaw = !!(B.weapon && B.weapon.cd && B.sawCharge > 0);
+    if (!aSaw && !bSaw) return false;
+
+    /* —— 情形一：一方带电锯、另一方有护盾 → 相持消耗护盾 —— */
+    if ((aSaw && B.shieldT > 0) || (bSaw && A.shieldT > 0)) {
+      const who = aSaw && B.shieldT > 0 ? B : A;         // 持盾方
+      const atk = who === B ? A : B;                     // 持锯方
+      who.shieldT = Math.max(0, who.shieldT - CFG.sawShieldCost * dtc);
+      atk.sawCharge = Math.max(0, (atk.sawCharge || 1) - CFG.sawClashDrain * 0.5 * dtc);
+      if (atk.type === 'snake') atk.sawClash = 1;         // 渲染：锯身对峙高亮
+      const nx = (A.x + B.x) / 2, ny = (A.y + B.y) / 2;
+      this.clashSheet(nx, ny, '#7fe7ff');
+      if (who.shieldT <= 0) {
+        if (typeof Sound !== 'undefined') Sound.sawBreak && Sound.sawBreak();
+        this.burst(nx, ny, 26, '#7fe7ff', 300);
+        this.weaponHit(atk, who, atk.weapon);            // 盾破 → 立刻锯断持盾方
+      } else if (Math.random() < 0.45 && typeof Sound !== 'undefined') Sound.shieldBlock && Sound.shieldBlock();
+      if (atk.sawCharge <= 0) this.depleteSaw(atk);
+      return true;
+    }
+
+    /* —— 情形二：双电锯对冲 → 极快互耗电量，都不发动切割 —— */
+    if (aSaw && bSaw) {
+      A.sawCharge = Math.max(0, A.sawCharge - CFG.sawClashDrain * dtc);
+      B.sawCharge = Math.max(0, B.sawCharge - CFG.sawClashDrain * dtc);
+      if (A.sawCharge > 0) A.sawClash = 1;               // 渲染：双方锯身对冲高亮
+      if (B.sawCharge > 0) B.sawClash = 1;
+      const nx = (A.x + B.x) / 2, ny = (A.y + B.y) / 2;
+      this.clashSheet(nx, ny, '#ffd24a');
+      if (typeof Sound !== 'undefined' && Math.random() < 0.6) Sound.sawClash && Sound.sawClash();
+      const aOut = A.sawCharge <= 0, bOut = B.sawCharge <= 0;
+      if (aOut && bOut) { this.depleteSaw(A); this.depleteSaw(B); }   // 同归于尽：都不发动
+      else if (aOut) { this.depleteSaw(A); this.weaponHit(B, A, B.weapon); }  // B 电量胜出 → 锯 A
+      else if (bOut) { this.depleteSaw(B); this.weaponHit(A, B, A.weapon); }  // A 电量胜出 → 锯 B
+      if (A.isPlayer || B.isPlayer) {
+        if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx && Math.random() < 0.3) {
+          FX.pop(nx, ny, '⚔ 电锯对冲中…', '#ffd24a', 14);
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+  /* 对冲火花（相持时持续迸溅，带轻微击退） */
+  clashSheet(x, y, color) {
+    for (let i = 0; i < 2; i++) {
+      const p = { x: x + rand(-8, 8), y: y + rand(-8, 8), vx: rand(-160, 160), vy: rand(-160, 160), r: rand(1.5, 3.2), c: color, life: rand(0.12, 0.26), max: 0.26 };
+      this.particles.push(p);
+    }
   }
 
   /* ---------------- v9.0.1：异常天气 ---------------- */
@@ -5290,10 +5487,13 @@ const View = {
           ctx.restore();
         }
       } else {
-        const ready = e.sawCd <= 0;
+        const charge = (e.sawCharge === undefined ? 1 : e.sawCharge);  // v9.0.8 补充：电量 1(满)~0(耗尽)
+        const low = charge < 0.28;
+        const clashing = !!e.sawClash;                                 // v9.0.8 补充：是否正在对冲
+        const ready = !clashing && e.sawCd <= 0;
         ctx.save();
         ctx.translate(e.x, e.y);
-        ctx.rotate(t * (ready ? 9 : 2));
+        ctx.rotate(t * (ready ? 9 : (clashing ? 16 : 2)) * (0.7 + charge * 0.3));   // 对冲时高速飞转
         ctx.beginPath();
         const R = e.r + 16;
         for (let i = 0; i < 10; i++) {
@@ -5302,12 +5502,22 @@ const View = {
           ctx.lineTo(Math.cos(a2) * R * 0.72, Math.sin(a2) * R * 0.72);
         }
         ctx.closePath();
-        ctx.fillStyle = e.weapon.color;
-        ctx.globalAlpha = ready ? 0.95 : 0.45;
+        ctx.fillStyle = clashing ? '#ffb347' : e.weapon.color;
+        ctx.globalAlpha = (ready ? 0.95 : 0.45) * (0.55 + charge * 0.45);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.strokeStyle = clashing ? 'rgba(255,220,120,1)' : (low ? 'rgba(255,120,120,.9)' : 'rgba(255,255,255,.8)');
+        ctx.lineWidth = clashing ? 2.2 : 1.2; ctx.stroke();
         ctx.restore();
         ctx.globalAlpha = 1;
+        /* 电量条：悬浮于电锯上方（绿→黄→红） */
+        const bw = 30, bh = 4, bx = e.x - bw / 2, by = e.y - R - 10;
+        ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+        ctx.fillStyle = charge > 0.55 ? '#5ef08a' : (charge > 0.28 ? '#ffd24a' : '#ff6a6a');
+        ctx.fillRect(bx, by, bw * Math.max(0.02, charge), bh);
+        if ((low || clashing) && Math.random() < (clashing ? 0.55 : 0.3)) {   // 低电/对冲时迸火花
+          ctx.fillStyle = clashing ? '#fff1a8' : '#ffd24a';
+          ctx.fillRect(e.x + rand(-16, 16), e.y + rand(-16, 16), 3, 3);
+        }
       }
     };
     for (let i = 0; i < w.balls.length; i++) drawWeapon(w.balls[i]);
@@ -5446,10 +5656,11 @@ const View = {
     const sp = segSprite(skin, K - 1, K);
     ctx.save();
     ctx.translate(s.x, s.y); ctx.rotate(s.dir);
-    if (s.dashT > 0 || s.boostT > 0) {
+    if (s.dashT > 0 || s.boostT > 0 || s.fleeT > 0) {
       ctx.beginPath(); ctx.arc(-hr * 0.6, 0, hr * 1.3, 0, TAU);
-      ctx.strokeStyle = s.boostT > 0 ? 'rgba(255,210,74,.6)' : 'rgba(160,255,220,.5)';
-      ctx.lineWidth = 5 / z; ctx.stroke();
+      /* v9.0.8 补充：被电锯锯断后的「惊慌逃跑」用醒目红色光环标识 */
+      ctx.strokeStyle = s.fleeT > 0 ? 'rgba(255,90,90,.85)' : (s.boostT > 0 ? 'rgba(255,210,74,.6)' : 'rgba(160,255,220,.5)');
+      ctx.lineWidth = (s.fleeT > 0 ? 6 : 5) / z; ctx.stroke();
     }
     ctx.drawImage(sp, -hr, -hr, hr * 2, hr * 2);
     // 眼睛
@@ -5587,7 +5798,21 @@ const Sound = {
   /* v9.0.3：跑酷小游戏音效 */
   click() { this.tone(700, 0.05, 'triangle', 0.05); },
   hurt() { this.tone(150, 0.26, 'square', 0.16, 70); },
-  star() { this.tone(1200, 0.08, 'triangle', 0.07, 1500); }
+  star() { this.tone(1200, 0.08, 'triangle', 0.07, 1500); },
+  /* v9.0.8：武器特殊音效 */
+  knifeHit() { this.tone(1500, 0.09, 'square', 0.09, 650); this.tone(2300, 0.05, 'triangle', 0.05, 1100); },
+  sawHit()   { this.tone(95, 0.22, 'sawtooth', 0.15, 55); this.tone(160, 0.16, 'square', 0.07, 90); },
+  sawBreak() { this.tone(320, 0.28, 'square', 0.13, 70); this.tone(130, 0.42, 'sawtooth', 0.11, 45); },
+  /* v9.0.8 补充：双电锯对冲 / 护盾挡锯 音效 */
+  sawClash() {                                  // 两锯相碰：金属对冲刺啦声（快速衰减的急促锯鸣）
+    this.tone(210, 0.09, 'sawtooth', 0.13, 150);
+    this.tone(430, 0.07, 'square', 0.10, 260);
+    this.tone(1180, 0.05, 'triangle', 0.06, 700);
+  },
+  shieldBlock() {                               // 护盾挡下电锯：能量护盾嗡鸣
+    this.tone(560, 0.16, 'sine', 0.11, 900);
+    this.tone(880, 0.12, 'triangle', 0.07, 1300);
+  }
 };
 
 /* ---------------------------- 输入 ---------------------------- */
@@ -5983,11 +6208,11 @@ const Game = {
       wsel.innerHTML = '';
       const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '（无）'; wsel.appendChild(o0);
       const cat = WEAPONS[fac] || WEAPONS.ball;
-      const ownedWp = d.weaponOwned || [];
+      const stockOf = function (id) { return (d.weaponStock && d.weaponStock[id]) || 0; };
       for (let i = 0; i < cat.length; i++) {
         const o = document.createElement('option');
         o.value = cat[i].id;
-        o.textContent = cat[i].name + (ownedWp.indexOf(cat[i].id) >= 0 ? '' : '（未拥有）');
+        o.textContent = cat[i].name + (stockOf(cat[i].id) > 0 ? '' : '（仓库无货）');
         wsel.appendChild(o);
       }
       wsel.value = (owned ? (skinWeaponConf(skinId) || '') : '');
@@ -6057,7 +6282,7 @@ const Game = {
       const fac = skinFactionOf(curSkin) || 'ball';
       const wp = $('adSkinWeapon') ? $('adSkinWeapon').value : '';
       if (!d.weaponOwned) d.weaponOwned = [];
-      if (wp) { d.skinWeapon[curSkin] = wp; if (d.weaponOwned.indexOf(wp) < 0) d.weaponOwned.push(wp); }
+      if (wp) { d.skinWeapon[curSkin] = wp; if (!d.weaponEq) d.weaponEq = { ball: null, snake: null }; d.weaponEq[fac] = wp; if (!d.weaponStock) d.weaponStock = {}; d.weaponStock[wp] = (d.weaponStock[wp] || 0) + 1; }
       else d.skinWeapon[curSkin] = null;
       /* 同步阵营默认装（新角色会继承）与外层展示字段 */
       if (!d.abilLoadout) d.abilLoadout = { ball: {}, snake: {} };
@@ -6180,6 +6405,57 @@ const Game = {
       em.className = 'hint';
       em.textContent = '仓库空空如也，去商店买点道具吧';
       box.appendChild(em);
+    }
+
+    /* v9.0.8 补充：仓库同时收纳【在武器商店购买过的武器】，
+       与道具一同展示；点「使用」= 取出 1 件装到当前选中的角色皮肤上 */
+    const allWp = (typeof WEAPONS !== 'undefined' && WEAPONS.ball && WEAPONS.snake)
+      ? WEAPONS.ball.concat(WEAPONS.snake) : [];
+    const stockOf = function (id) { return (d.weaponStock && d.weaponStock[id]) || 0; };
+    let anyWp = false;
+    for (let i = 0; i < allWp.length; i++) {
+      const wp = allWp[i];
+      const cnt = stockOf(wp.id);
+      if (cnt <= 0) continue;
+      anyWp = true;
+      const fac = wp.n ? 'ball' : 'snake';
+      const inUse = (d.weaponEq && d.weaponEq[fac]) === wp.id;
+      const row = document.createElement('div');
+      row.className = 'itemRow';
+      const sym = document.createElement('div');
+      sym.className = 'isym'; sym.textContent = wp.n ? '🗡' : '⚙';
+      const info = document.createElement('div');
+      info.className = 'iinfo';
+      const nm = document.createElement('div');
+      nm.className = 'inm';
+      nm.textContent = wp.name + '（' + (fac === 'ball' ? '球·飞刀' : '蛇·电锯') + '）' + (inUse ? ' · 使用中' : '');
+      const ds2 = document.createElement('div');
+      ds2.className = 'ids';
+      ds2.textContent = wp.desc + (fac === 'snake' ? ' · 带电时可直接锯断他蛇（不惧互撞），电量耗尽后消失' : '');
+      info.appendChild(nm); info.appendChild(ds2);
+      const cntEl = document.createElement('div');
+      cntEl.className = 'icnt'; cntEl.textContent = '×' + cnt;
+      const btn = document.createElement('button');
+      btn.className = 'btn small' + (inUse ? '' : ' ghost');
+      if (inUse) { btn.textContent = '使用中'; btn.disabled = true; }
+      else {
+        btn.textContent = '使用';
+        btn.onclick = (function (id) { return function () { Game.equipWeapon(id); Game.buildRepo(); }; })(wp.id);
+      }
+      row.appendChild(sym); row.appendChild(info); row.appendChild(cntEl); row.appendChild(btn);
+      box.appendChild(row);
+    }
+    if (!any && !anyWp) {
+      const em = document.createElement('div');
+      em.className = 'hint';
+      em.textContent = '仓库空空如也，去商店买点道具或武器吧';
+      box.appendChild(em);
+    }
+    if (anyWp) {
+      const tip = document.createElement('div');
+      tip.className = 'hint';
+      tip.textContent = '⚔️ 武器为消耗品：点「使用」装到当前选中的角色；本局用完（或电锯电量耗尽）即报废，再用需重新购买。';
+      box.appendChild(tip);
     }
   },
 
@@ -6608,6 +6884,14 @@ const Game = {
     const d = Store.data;
     d.games++;
     this.grantProgress(d);        // v9.0.1：养成宝石 / 合成宝石 / 能力宝石 发放
+    /* v9.0.8：武器为消耗品 —— 本局「用过」的武器报废（清空装备，下局再用需重新购买并点使用） */
+    if (p && p.weaponUsed) {
+      if (!d.skinWeapon) d.skinWeapon = {};
+      if (p.skinId) d.skinWeapon[p.skinId] = null;
+      if (d.weaponEq) d.weaponEq[p.type] = null;
+      Store.save();
+      this.toast('♻ 本局武器已用完报废，下次使用需重新购买');
+    }
     let isNew = false;
     if (p.type === 'ball') { if (score > d.bestBall) { d.bestBall = score; isNew = true; } }
     else { if (score > d.bestSnake) { d.bestSnake = score; isNew = true; } }
@@ -6952,18 +7236,19 @@ const Game = {
     $('fusionInfo').textContent = '合成宝石 ' + (d.fusionGem || 0) + ' · 能力宝石 ' + (d.abilGem || 0) +
       ' · 当前阵营（' + (this.menu.faction === 'ball' ? '球' : '蛇') + '）第二能力：' + (f ? ABILS[f].name : '无');
 
-    /* 武器商店 */
+    /* 武器商店（v9.0.8：仓库库存制 —— 购买入仓，点「使用」取出装到当前角色，本局用完报废） */
     const cat = WEAPONS[this.menu.faction] || WEAPONS.ball;
     const eqId = (d.weaponEq && d.weaponEq[this.menu.faction]) || null;
+    const stockCnt = function (id) { return (d.weaponStock && d.weaponStock[id]) || 0; };
     $('weaponInfo').textContent = '当前阵营：' + (this.menu.faction === 'ball' ? '球（环绕飞刀）' : '蛇（电锯）') +
       ' · 已装备：' + (eqId ? (weaponById(eqId) || {}).name : '无') +
-      ' · 仓库 ' + ((d.weaponOwned || []).length) + ' 件 · 金币 ' + (d.coins | 0) +
-      '（购买入仓库，点「装备」才装备到当前选中的角色）';
+      ' · 仓库 ' + cat.reduce(function (s, w) { return s + stockCnt(w.id); }, 0) + ' 件 · 金币 ' + (d.coins | 0) +
+      '（消耗品：本局用完即报废，再用需重新购买）';
     const wl = $('weaponList');
     wl.innerHTML = '';
     for (let i = 0; i < cat.length; i++) {
       const wp = cat[i];
-      const owned = (d.weaponOwned || []).indexOf(wp.id) >= 0;
+      const stock = stockCnt(wp.id);
       const row = document.createElement('div');
       row.className = 'baseItem';
       const sw = document.createElement('div'); sw.className = 'bw'; sw.style.background = wp.color;
@@ -6971,8 +7256,8 @@ const Game = {
       nm.textContent = wp.name + ' · ' + wp.desc + ' · ' + wp.price + ' 金币';
       const bt = document.createElement('button');
       bt.className = 'baseMini' + (eqId === wp.id ? ' on' : '');
-      if (eqId === wp.id) { bt.textContent = '已装备'; bt.disabled = true; }
-      else if (owned) { bt.textContent = '装备'; bt.onclick = (function (id) { return function () { self.equipWeapon(id); }; })(wp.id); }
+      if (eqId === wp.id) { bt.textContent = '使用中'; bt.disabled = true; }
+      else if (stock > 0) { bt.textContent = '使用（库存' + stock + '）'; bt.onclick = (function (id) { return function () { self.equipWeapon(id); }; })(wp.id); }
       else if ((d.coins | 0) < wp.price) { bt.textContent = '金币不足'; bt.disabled = true; }
       else { bt.textContent = '购买'; bt.onclick = (function (id) { return function () { self.buyWeapon(id); }; })(wp.id); }
       row.appendChild(sw); row.appendChild(nm); row.appendChild(bt);
@@ -7054,13 +7339,13 @@ const Game = {
     if (!wp) return;
     if ((d.coins | 0) < wp.price) { Sound.deny(); return; }
     d.coins -= wp.price;
-    /* v9.0.7：购买只入「仓库」，不自动装备；想用时在仓库里点「装备」——
-       装备动作会同步写到当前选中的角色（skinWeapon[skinId]），进游戏立即具现 */
-    if (!d.weaponOwned) d.weaponOwned = [];
-    if (d.weaponOwned.indexOf(id) < 0) d.weaponOwned.push(id);
+    /* v9.0.8：购买 = 入仓库（库存 +1），不自动装备；武器为消耗品 */
+    if (!d.weaponStock) d.weaponStock = {};
+    d.weaponStock[id] = (d.weaponStock[id] || 0) + 1;
     Store.save();
     Sound.buy();
-    this.toast('🛒 已购买 ' + wp.name + '，已放入仓库（点击「装备」后生效）');    this.renderBase();
+    this.toast('🛒 ' + wp.name + ' 已入仓库（库存 ' + d.weaponStock[id] + ' · 点「使用」装到当前角色）');
+    this.renderBase();
     this.refreshMenu();
   },
   equipWeapon(id) {
@@ -7068,14 +7353,20 @@ const Game = {
     const wp = weaponById(id);
     if (!wp) return;
     const fac = wp.n ? 'ball' : 'snake';
+    if (!d.weaponStock) d.weaponStock = {};
+    const stock = d.weaponStock[id] || 0;
+    if (stock <= 0) { Sound.deny(); this.toast('仓库中没有 ' + wp.name + '，请先购买'); return; }
+    /* v9.0.8：点「使用」= 从仓库取出 1 件，装到当前选中的角色皮肤上
+       （修复 v9.0.7 蛇武器被误写到球角色 → 电锯无法具现的问题） */
+    const cur = (this.menu && (fac === 'ball' ? this.menu.skinBall : this.menu.skinSnake)) ||
+                (fac === 'ball' ? d.skinBall : d.skinSnake);
+    d.weaponStock[id] = stock - 1;
     if (!d.weaponEq) d.weaponEq = { ball: null, snake: null };
     d.weaponEq[fac] = id;
-    /* v9.0.7：同步写到「当前选择的角色」（菜单正在预览的优先），保证进游戏立即具现 */
-    const cur = (this.menu && this.menu.skinBall) || d.skinBall;
     if (cur) { if (!d.skinWeapon) d.skinWeapon = {}; d.skinWeapon[cur] = id; }
     Store.save();
     Sound.buy();
-    this.toast('已装备：' + wp.name + (cur ? '（已同步到 ' + getSkin('ball', cur).name + '）' : ''));
+    this.toast('⚔️ 已给「' + (cur ? getSkin(fac, cur).name : (fac === 'ball' ? '球' : '蛇')) + '」装上 ' + wp.name + '（本局用完即报废）');
     this.renderBase();
   },
 
