@@ -646,7 +646,7 @@ canvas#game{position:absolute; inset:0; width:100%; height:100%; display:block; 
   <div class="overlay show" id="ovMenu">
     <div class="card glass">
       <div class="title" id="gameTitle">球蛇战场</div>
-      <div class="subtitle">BLOB &amp; SNAKE ARENA · 吞噬 · 进化 · 称霸</div>
+      <div class="subtitle">BLOB &amp; SNAKE ARENA · 吞噬 · 进化 · 称霸 · v9.0.9</div>
 
       <div class="sec">选择阵营</div>
       <div class="factions">
@@ -969,6 +969,7 @@ canvas#game{position:absolute; inset:0; width:100%; height:100%; display:block; 
 /* =========================================================================
  *  球蛇战场 Blob & Snake Arena
  *  球球大作战 × 贪吃蛇 融合竞技  — 单文件离线 HTML5 游戏
+ *  v9.0.9：武器系统重修（小球飞刀终于能砍断蛇）+ 跑酷手感修复
  * ========================================================================= */
 
 /* ---------------------------- 全局配置 ---------------------------- */
@@ -990,6 +991,13 @@ const CFG = {
   sawFleeT: 3.2,         // 被电锯锯断后「加速逃跑」的持续时间（秒）
   sawFleeMul: 1.45,      // 被锯后逃跑速度倍率
   sawMinKeepSeg: 3,      // 被电锯锯后至少为幸存者保留的体节（避免整条消失）
+  /* --- v9.0.9：飞刀「伤口累积」机制（让球用飞刀能真正斩杀蛇） --- */
+  knifeWoundMax: 6,          // 累计多少道伤口 → 触发致命一击（斩杀该蛇）
+  knifeWoundDecay: 0.06,     // 每秒自然愈合的伤口数（防止无限拖时间）
+  knifeWoundPerPow: 1.0,     // 每把飞刀按 pow 折算的伤口数（pow 1.0 = 1 道）
+  knifeKeepSegRatio: 0.55,   // 飞刀断尾时，被切段最多占全长的比例（防一砍到底）
+  knifeShieldCost: 9,        // 飞刀撞护盾：每次命中削减的护盾秒数（与电锯同源语义）
+  knifeMinIdx: 3,            // 飞刀断点的最靠前体节下限（安全兜底）
   bodyGap: 0.72,         // 身体判定半径系数
   snakeSegMass: 6,       // 每节身体质量
   snakeHeadMass: 60,     // 蛇头初始质量
@@ -1320,11 +1328,11 @@ const PVP_SKILLS = [
    蛇：电锯（按「切割速度」定价）—— 有冷却，可反复使用 */
 const WEAPONS = {
   ball: [
-    { id: 'k1', name: '铁飞刀', n: 2, pow: 0.8, color: '#cfd8e6', price: 260, desc: '环绕 2 把 · 基础切割' },
-    { id: 'k2', name: '精钢飞刀', n: 3, pow: 1.0, color: '#a8d8ff', price: 420, desc: '环绕 3 把 · 标准切割' },
-    { id: 'k3', name: '烈焰飞刀', n: 3, pow: 1.5, color: '#ff9a5a', price: 700, desc: '环绕 3 把 · 灼烧重创' },
-    { id: 'k4', name: '寒霜飞刀', n: 4, pow: 1.2, color: '#9ff0ff', price: 900, desc: '环绕 4 把 · 冰封减速' },
-    { id: 'k5', name: '雷神飞刀', n: 5, pow: 1.8, color: '#ffe14a', price: 1400, desc: '环绕 5 把 · 雷霆重创' }
+    { id: 'k1', name: '铁飞刀', n: 4, pow: 0.8, color: '#cfd8e6', price: 260, desc: '环绕 4 把 · 基础切割' },
+    { id: 'k2', name: '精钢飞刀', n: 5, pow: 1.0, color: '#a8d8ff', price: 420, desc: '环绕 5 把 · 标准切割' },
+    { id: 'k3', name: '烈焰飞刀', n: 5, pow: 1.5, color: '#ff9a5a', price: 700, desc: '环绕 5 把 · 灼烧重创' },
+    { id: 'k4', name: '寒霜飞刀', n: 6, pow: 1.2, color: '#9ff0ff', price: 900, desc: '环绕 6 把 · 冰封减速' },
+    { id: 'k5', name: '雷神飞刀', n: 7, pow: 1.8, color: '#ffe14a', price: 1400, desc: '环绕 7 把 · 雷霆重创' }
   ],
   snake: [
     { id: 's1', name: '钢齿电锯', cd: 2.6, pow: 0.9, cuts: 10, drain: 0.8, color: '#9aa7b8', price: 300, desc: '间隔 2.6 秒 · 续航久' },
@@ -1782,6 +1790,13 @@ const RULES_HTML = [
     '· <b>晃动更克制</b>：天敌咬住时不再每帧狂抖，改为轻脉冲；整体抖动幅度下调约 40%，危险红晕仅在领先距离过低时才出现。<br>' +
     '· <b>操控更稳</b>：移动改为<b>以按下点为锚的相对摇杆</b>（手指抖动不漂移）；地铁神庙跳 / 滑去掉过严的按压时长门限，并支持键盘 <b>W/S 或 ↑/↓</b>。<br>' +
     '· <b>画面更清</b>：HUD 放大加亮，新增<b>天敌距离血条</b>（绿=安全·黄=警惕·红=危险），特殊路段顶部提示加长、字号加大。</li>',
+  '<li><b>武器系统重修 · 飞刀能砍断蛇了</b>（v9.0.9）：修掉「<b>小球的飞刀无法砍断蛇</b>」——实测复现后发现是三个缺陷叠加。<br>' +
+    '· <b>原因一（最致命）</b>：球撞到蛇<b>身体</b>时，代码里<b>根本没检查武器</b>（球的分支漏了武器判定，而蛇的分支有）—— 玩家最自然的操作「拿飞刀去撞蛇身」<b>一次都不触发</b>。<br>' +
+    '· <b>原因二</b>：球撞到蛇<b>头</b>时飞刀虽然触发，但同一帧蛇头照样把球吞了（<b>球必死、还白烧一把刀</b>）—— 因为吞食判定只认「已死」、不认「保护期」。<br>' +
+    '· <b>原因三</b>：飞刀断点用<b>固定比例</b>，砍头和砍尾断在同一处，手感像「砍了个寂寞」。<br>' +
+    '· <b>修法</b>：①球撞蛇身<b>补上武器判定</b>（带刀先行 → 大球撞断 → 贴 3 秒断尾）；②飞刀命中后<b>立即接管本次接触</b>并跳过同帧吞噬，同时给吞食函数补上<b>保护期判定</b>；③断点改为<b>贴合实际撞击部位</b>（撞到哪一节就从那一节往后断，保留安全下限）。<br>' +
+    '· <b>新增「伤口累积」</b>：单刀仍只断尾（不无脑秒杀），但<b>持续命中会累积伤口</b>，攒满 <b>6 道</b>即触发 <b>致命一击斩杀</b>该蛇；伤口随时间自然愈合。蛇头上方会浮现一条<b>伤口进度弧</b>（橙 → 满时变红），直观看到「再砍一刀就斩」。<br>' +
+    '· <b>其余优化</b>：飞刀撞<b>带护盾</b>的蛇改为<b>削盾</b>（每次削 9 秒护盾）而非「完全免疫且不消耗刀」；飞刀数量上调（铁飞刀 2→4、精钢 3→5、烈焰 3→5、寒霜 4→6、雷神 5→7）；顺带修掉一处 <b>const 被重新赋值</b>导致护盾场景下整帧碰撞崩溃的潜伏 bug。</li>',
   '<li><b>蛇球快跑 · 手感修复</b>（v9.0.8 补充Ⅶ）：解决「<b>速度忽快忽慢 / 左右不灵活 / 太慢</b>」。<br>' +
     '· <b>左右更灵活</b>：以前玩家被画在透视的「较远处」，那里路面只 158px 宽、左右只能跑 137px（占屏宽 29%），又挤又迟钝；现在玩家<b>下移更贴镜头</b>、路面<b>加宽</b>，左右行程放大到约 <b>300px（63% 屏宽）</b> —— 想往哪边就往哪边。<br>' +
     '· <b>速度不再忽快忽慢</b>：旧版撞到东西速度<b>一瞬间掉到 42%</b>、恢复时又「啪」地弹回满速，护栏反复蹭到就让速度<b>高频抖动</b>；现在改成<b>限速平滑过渡</b>（每帧变化严格有界、肉眼无跳变），减速幅度也从掉到 42% 放宽到 <b>72%</b> —— 有代价但不突兀。<br>' +
@@ -1894,6 +1909,7 @@ class Ball {
     this.cds = {};                   // { 能力key: 剩余冷却 }
     this.weapon = null;      // 武器定义对象
     this.knives = 0;         // 球：剩余飞刀数量
+    this.knifeWounds = 0;    // v9.0.9：被飞刀累积的伤口数（达阈值即被斩杀）
     this.sawCd = 0;          // 蛇：电锯冷却
     this.thornCd = 0;
     this.flash = 0;
@@ -2017,6 +2033,7 @@ class Snake {
     this.cds = {};                   // { 能力key: 剩余冷却 }
     this.weapon = null;      // 武器定义对象
     this.knives = 0;         // 球：剩余飞刀数量
+    this.knifeWounds = 0;    // v9.0.9：被飞刀累积的伤口数（达阈值即被斩杀）
     this.sawCd = 0;          // 蛇：电锯冷却
     this.flash = 0;
     this.mercy = 0;
@@ -2161,6 +2178,8 @@ class Snake {
     if (this.shieldT > 0) this.shieldT -= dt;
     if (this.thornT > 0) this.thornT -= dt;
     if (this.fleeT > 0) this.fleeT -= dt;        // v9.0.8 补充：被锯后加速逃跑计时
+    /* v9.0.9：飞刀伤口随时间自然愈合（防止靠拖时间无限免疫斩杀） */
+    if (this.knifeWounds > 0) this.knifeWounds = Math.max(0, this.knifeWounds - CFG.knifeWoundDecay * dt);
     if (!this.isPlayer) aiThink(this, w, dt);
     this.dir = turnToward(this.dir, this.targetDir, this.maxTurn, dt);
     const sp = this.speed * (this.dashT > 0 ? 1.6 : 1) * (this.boostT > 0 ? CFG.spitBoostMul : 1) *
@@ -2892,6 +2911,10 @@ class World {
   }
   eatEntity(pred, prey) {
     if (prey.dead || pred.dead) return;
+    /* v9.0.9 修复：无敌帧 / 被武器击退的短暂保护期内不可被吞。
+       旧版只认 dead 不认 mercy —— 球用飞刀砍中蛇头后，蛇被断尾加了 1.2s mercy，
+       但同一帧的「蛇头吞球」结算照样执行（eatEntity 不看 mercy），球必死、白烧一把刀。 */
+    if (prey.mercy > 0 || pred.mercy > 0) return;
     prey.dead = true;
     pred.kills++;
     pred.flash = 0.35;
@@ -3483,8 +3506,14 @@ class World {
             if (B.thornT > 0) {                   // 球撞上荆棘蛇身：被震退
               const ang = Math.atan2(A.y - n.y, A.x - n.x);
               A.x += Math.cos(ang) * 16; A.y += Math.sin(ang) * 16;
+            } else if (A.weapon && A.knives > 0) {
+              /* v9.0.9 修复：球撞蛇【身体】时补上武器判定 ——
+                 旧版这里完全没检查 A.weapon，导致「小球的飞刀无法砍断蛇」
+                 （玩家最自然的操作就是拿飞刀去撞蛇身，代码却根本不走武器路径）。
+                 现在与蛇分支对称：飞刀按撞击点结算，并带上被击中的体节索引。 */
+              this.tryWeapon(A, B, { kind: 'body', idx: n.idx });
             } else if (ar > B.r * CFG.eatRatio) {
-              this.cutSnake(B, n.idx, A);          // 只有更大的球能撞断蛇身
+              this.cutSnake(B, n.idx, A);          // 更大的球能撞断蛇身
             } else {
               // v8.5：小球贴蛇身累计 3 秒 → 断尾化为等质量食物（克制蛇的关键手段）
               if (A.bodyGrip && A.bodyGrip.snake === B) { A.bodyGrip.t += dt; A.bodyGrip.idx = n.idx; }
@@ -3501,17 +3530,32 @@ class World {
              结算完直接跳过普通吞噬判定（对冲期间两者都不死、不互吞）。 */
           if (A.type === 'snake' && B.type === 'snake' && this.headClashSaw(A, B, dt)) continue;
           // v9.0.1：武器命中 —— 飞刀（球，消耗一把）/ 电锯（蛇，按冷却）
-          if (A.weapon) this.tryWeapon(A, B);
+          // v9.0.9 修复：飞刀/电锯命中后，立即接管本次接触并跳过同帧的正常吞噬判定。
+          //   旧版 tryWeapon 返回后代码继续往下走「蛇头吞球」结算 —— 飞刀砍了蛇，
+          //   蛇却照样把球吞了（球必死、还白烧一把刀），武器形同虚设。
+          if (A.weapon && this.tryWeapon(A, B, { kind: 'head' })) {
+            const ang = Math.atan2(A.y - B.y, A.x - B.x);
+            const sep = (ar + n.r) * 0.5 + 6;
+            if (A.type === 'ball') {
+              A.x += Math.cos(ang) * sep; A.y += Math.sin(ang) * sep;   // 球主动后撤
+            } else {
+              B.x -= Math.cos(ang) * sep; B.y -= Math.sin(ang) * sep;   // 蛇被锯退
+            }
+            continue;
+          }
           const br = n.r;
           const sebr = (this.mode === 'ability') ? CFG.snakeEatBallRatioAbility : CFG.snakeEatBallRatio;
           const ballEat = (this.mode === 'ability') ? CFG.ballEatSnakeRatioAbility : CFG.eatRatio;
           // v9：饕餮吞噬 —— 临时放宽自身吞噬阈值（不改变对手对自己的判定）
           const devourA = (A.devourT > 0) ? 0.8 : 1;
           const devourB = (B.devourT > 0) ? 0.8 : 1;
-          const aBig = (A.type === 'snake')
+          /* v9.0.9 修复：这里原本是 const，但下面第 3551-3552 行会重新赋值 →
+             一旦「aBig 为真且对方带护盾」就会抛 TypeError（Assignment to constant variable）
+             直接打断整帧碰撞结算。改为 let。 */
+          let aBig = (A.type === 'snake')
             ? (ar > br * (B.type === 'ball' ? sebr : CFG.headEatRatio) * devourA)
             : (ar > br * ballEat * devourA);
-          const bBig = (B.type === 'snake')
+          let bBig = (B.type === 'snake')
             ? (br > ar * (A.type === 'ball' ? sebr : CFG.headEatRatio) * devourB)
             : (br > ar * ballEat * devourB);
           // 护盾无敌：带盾一方无法被吞
@@ -3635,14 +3679,38 @@ class World {
   /* ---------------- v9.0.1：武器 ----------------
      球（飞刀）：命中消耗一把，砍断蛇身 / 切开球体
      蛇（电锯）：按冷却反复切割，同样砍断蛇身 / 切开球体 */
-  tryWeapon(A, B) {
+  tryWeapon(A, B, hit) {
     if (!A.weapon || A.dead || B.dead || B.mercy > 0) return false;
     if (A.type === 'ball') {
       if (A.knives <= 0) return false;
-      if (B.shieldT > 0) return false;               // 护盾免疫飞刀（飞刀不消耗护盾）
+      /* v9.0.9 修复：撞到【带护盾】的蛇不再「完全免疫且不消耗飞刀」（玩家会以为武器坏了），
+         改为与电锯一致 —— 飞刀削减对方护盾值，护盾被削破后才能伤到蛇。
+         这样护盾依旧有价值（需要多刀），但飞刀不再白费。 */
+      if (B.shieldT > 0) {
+        A.knives--;                                    // 用掉一把飞刀
+        A.weaponUsed = true;
+        const cost = Math.min(B.shieldT, CFG.knifeShieldCost);
+        B.shieldT = Math.max(0, B.shieldT - cost);
+        this.burst(B.x, B.y, 14, '#7fe7ff', 200);
+        this.shockRing(B.x, B.y, '#7fe7ff');
+        if (A.isPlayer || B.isPlayer) {
+          if (typeof Sound !== 'undefined') Sound.shieldBlock && Sound.shieldBlock();
+          if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx) {
+            FX.pop(View.W / 2 + (B.x - View.cam.x) * View.cam.zoom,
+              View.H / 2 + (B.y - View.cam.y) * View.cam.zoom,
+              B.shieldT <= 0 ? '🛡 护盾被飞刀削破!' : '🛡 飞刀削盾中', '#7fe7ff', 16);
+            if (A.isPlayer) FX.haptic('hit');
+          }
+        }
+        if (B.shieldT <= 0 && typeof Game !== 'undefined' && Game.toast) {
+          Game.toast(B.name + ' 的护盾被飞刀削破！');
+        }
+        this.emit('weapon', B.x, B.y, { byPlayer: A.isPlayer });
+        return true;
+      }
       A.knives--;                                    // 用掉一把飞刀
       A.weaponUsed = true;
-      this.weaponHit(A, B, A.weapon);
+      this.weaponHit(A, B, A.weapon, hit);
       return true;
     }
     /* v9.0.8 补充：电锯撞到【护盾】→ 不再免疫，改为消耗护盾值；
@@ -3673,7 +3741,7 @@ class World {
     A.sawCd = (A.weapon.cd || 2);
     A.sawCharge = Math.max(0, (A.sawCharge === undefined ? 1 : A.sawCharge) - CFG.sawCutDrain);
     A.weaponUsed = true;
-    this.weaponHit(A, B, A.weapon);
+    this.weaponHit(A, B, A.weapon, hit);
     if (A.sawCharge <= 0) this.depleteSaw(A);
     return true;
   }
@@ -3699,16 +3767,44 @@ class World {
     e.sawCharge = Math.max(0, (e.sawCharge === undefined ? 1 : e.sawCharge) - drain * dt);
     if (e.sawCharge <= 0) this.depleteSaw(e);
   }
-  weaponHit(A, B, wp) {
+  weaponHit(A, B, wp, hit) {
     const pow = wp.pow || 1;
+    const isKnife = !!wp.n;
     if (B.type === 'snake') {
-      /* v9.0.8 补充：电锯锯断的【只是被锯到的那一段】——
-         从「锯击点」到「蛇尾」的这一段身体化作食物，
-         「蛇头 → 锯击点」的前段完全保留（蛇不死、继续正常游玩）。 */
-      const frac = clamp(0.62 - pow * 0.08, 0.30, 0.58);
-      let idx = Math.floor(B.segments * frac);
-      idx = Math.max(2, Math.min(B.segments - 1, idx));
-      this.severSnakeBehind(B, idx, A);      // 传入攻击者 → 幸存者朝反方向加速逃跑
+      /* v9.0.9 修复：断点改为【贴合实际撞击部位】。
+         旧版用固定比例 frac（从蛇头算起），无论砍头还是砍尾都断在同一处，
+         手感上像「砍了个寂寞」。现在按击中的体节索引断尾。 */
+      let idx;
+      if (hit && hit.kind === 'body' && typeof hit.idx === 'number') {
+        idx = hit.idx;                                   // 撞到哪一节，就从那一节往后断
+      } else {
+        // 撞到蛇头：从「头后一段」断开（按威力越强越靠前，但保留安全下限）
+        const frac = clamp(0.42 - pow * 0.06, 0.20, 0.40);
+        idx = Math.floor(B.segments * frac);
+      }
+      /* 安全下限：不可一砍到底（前段至少保留 CFG.knifeMinIdx 节） */
+      idx = Math.max(CFG.knifeMinIdx, Math.min(B.segments - 1, idx));
+      this.severSnakeBehind(B, idx, A);
+
+      /* —— v9.0.9 新增：飞刀「伤口累积」→ 达阈值触发致命一击 ——
+         单刀只断尾（保留电锯式削弱语义），但持续命中能累积伤口，
+         攒够 CFG.knifeWoundMax 道即斩杀该蛇 —— 这才是「飞刀能砍断蛇」。 */
+      if (isKnife && !B.dead) {
+        const gain = CFG.knifeWoundPerPow * Math.max(0.5, pow);
+        B.knifeWounds = (B.knifeWounds || 0) + gain;
+        if (typeof FX !== 'undefined' && typeof View !== 'undefined' && View.ctx && (A.isPlayer || B.isPlayer)) {
+          FX.pop(View.W / 2 + (B.x - View.cam.x) * View.cam.zoom,
+            View.H / 2 + (B.y - View.cam.y) * View.cam.zoom - 22,
+            '🩸 伤口 ' + Math.min(B.knifeWounds, CFG.knifeWoundMax).toFixed(1) + '/' + CFG.knifeWoundMax,
+            '#ff9a5a', 14);
+        }
+        if (B.knifeWounds >= CFG.knifeWoundMax) {
+          this.killSnake(B, A, 'knife');
+          if (typeof Game !== 'undefined' && Game.toast) {
+            Game.toast('🗡 飞刀累计伤口斩杀 ' + B.name + '！');
+          }
+        }
+      }
     } else {
       // 切开球：掉出一部分质量化作食物
       const loss = Math.min(B.mass * 0.28 * pow, Math.max(0, B.mass - CFG.ballMinMass - 8));
@@ -5977,6 +6073,17 @@ const View = {
       ctx.lineWidth = (s.fleeT > 0 ? 6 : 5) / z; ctx.stroke();
     }
     ctx.drawImage(sp, -hr, -hr, hr * 2, hr * 2);
+    /* v9.0.9：飞刀伤口可视化 —— 蛇头上方一条「伤口进度」细弧，
+       让玩家直观看到「再砍一刀就能斩杀」的进度。 */
+    if (s.knifeWounds > 0) {
+      const frac = Math.min(1, s.knifeWounds / CFG.knifeWoundMax);
+      ctx.beginPath();
+      ctx.arc(0, 0, hr + 6 / z, -Math.PI / 2, -Math.PI / 2 + TAU * frac);
+      ctx.strokeStyle = frac >= 1 ? '#ff4a4a' : '#ff9a5a';
+      ctx.lineWidth = 3.5 / z;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
     // 眼睛
     const ex = hr * 0.34, ey = hr * 0.42, er = Math.max(hr * 0.20, 1.6);
     ctx.fillStyle = '#fff';
