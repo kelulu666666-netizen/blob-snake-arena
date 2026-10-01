@@ -1782,6 +1782,11 @@ const RULES_HTML = [
     '· <b>晃动更克制</b>：天敌咬住时不再每帧狂抖，改为轻脉冲；整体抖动幅度下调约 40%，危险红晕仅在领先距离过低时才出现。<br>' +
     '· <b>操控更稳</b>：移动改为<b>以按下点为锚的相对摇杆</b>（手指抖动不漂移）；地铁神庙跳 / 滑去掉过严的按压时长门限，并支持键盘 <b>W/S 或 ↑/↓</b>。<br>' +
     '· <b>画面更清</b>：HUD 放大加亮，新增<b>天敌距离血条</b>（绿=安全·黄=警惕·红=危险），特殊路段顶部提示加长、字号加大。</li>',
+  '<li><b>蛇球快跑 · 手感修复</b>（v9.0.8 补充Ⅶ）：解决「<b>速度忽快忽慢 / 左右不灵活 / 太慢</b>」。<br>' +
+    '· <b>左右更灵活</b>：以前玩家被画在透视的「较远处」，那里路面只 158px 宽、左右只能跑 137px（占屏宽 29%），又挤又迟钝；现在玩家<b>下移更贴镜头</b>、路面<b>加宽</b>，左右行程放大到约 <b>300px（63% 屏宽）</b> —— 想往哪边就往哪边。<br>' +
+    '· <b>速度不再忽快忽慢</b>：旧版撞到东西速度<b>一瞬间掉到 42%</b>、恢复时又「啪」地弹回满速，护栏反复蹭到就让速度<b>高频抖动</b>；现在改成<b>限速平滑过渡</b>（每帧变化严格有界、肉眼无跳变），减速幅度也从掉到 42% 放宽到 <b>72%</b> —— 有代价但不突兀。<br>' +
+    '· <b>越跑越快但更平缓</b>：距离带来的提速由最高 <b>1.7 倍</b>放缓到 <b>1.25 倍</b>，长距离也不会突然变得手忙脚乱。<br>' +
+    '· <b>更跟手</b>：手指滑动 <b>117px</b> 即满舵（旧版要 164px），左右转向明显更快。</li>',
   '<li><b>蛇球快跑 · 投射与判定对齐</b>（v9.0.8 补充Ⅵ）：彻底修掉「<b>食物看着撞上了却不消失</b>」以及「<b>没碰到却凭空消失</b>」。<br>' +
     '· <b>原因</b>：跑酷是伪 3D 透视，碰撞判定却用了<b>世界坐标</b>、画面绘制用的是<b>屏幕坐标</b>，两者尺度完全不同 —— 纵向差约 <b>172 像素</b>、横向靠边时最多差 <b>3.77 倍</b>，贴护栏时玩家甚至会被推出画布（x=499 &gt; 画布 480）。补充Ⅳ 加的<b>扫掠检测</b>本身没问题，但扫的是<b>错误坐标</b>，所以高速穿透堵住了、空间错位还在。<br>' +
     '· <b>修法</b>：新增一组<b>投影互逆</b>函数（统一基准 <b>PLAYER_SCREEN_Y=340</b>、世界⇄屏幕互换、玩家横向投影、玩家深度），把<b>判定与绘制全部统一到屏幕空间</b>，半径公式逐字对齐 —— 做到 <b>「画在哪 = 判定在哪」</b>，透视尺度怎么变都不会错位。<br>' +
@@ -4445,7 +4450,7 @@ const MAZE = {
     this.RUN = {
       fac: fac, diff: diff, par: P,
       x: 0, vx: 0, targetX: 0, railT: 0, edgeT: 0,
-      dist: 0, spd: P.spd, baseSpd: P.spd, slowT: 0,
+      dist: 0, spd: P.spd, baseSpd: P.spd, slowT: 0, slowK: 0,
       mass: 46, seg: 14,        // 球看质量 / 蛇看长度
       chaser: 0,                // 天敌离你多近（0 = 贴脸，越大越安全）
       chaserHit: 0,             // 被咬中计时
@@ -4515,8 +4520,12 @@ const MAZE = {
    *
    * 修复：以「玩家绘制的屏幕 y」为唯一基准（PLAYER_SCREEN_Y），
    *       反解出它对应的世界 y（PLAYER_WY），碰撞与绘制共用同一个值，永不漂移。
+   *
+   * v9.0.9：把玩家从屏幕 y=340 下移到 520 —— 340 对应的透视深度 t≈0.287
+   *       仍偏「远」，那里路面只有 158px 宽、玩家左右行程仅 137px（占屏宽 29%），
+   *       所以手感又挤又迟钝。下移到 520（t≈0.533）后行程放大到约 300px（63%）。
    * ========================================================================== */
-  PLAYER_SCREEN_Y: 340,
+  PLAYER_SCREEN_Y: 520,
   /* 透视投影：世界 y（-120 远端 ~ 760 近端）→ 屏幕 y（horizon ~ H2+40） */
   worldToScreenY(wy, horizon, H2) {
     const t = clamp((wy - (-120)) / (760 - (-120)), 0, 1);
@@ -4540,12 +4549,19 @@ const MAZE = {
      两者相差约 3.8 倍 —— 靠边的食物在画面上根本没碰到球，却被判为吃到；反之亦然。
      更严重的是：`*1.35` 会把玩家推到 x≈499（画布宽仅 480），**贴护栏时玩家直接画出屏幕**。
      现在统一采用与食物完全一致的投影缩放 —— 所见即所得。 */
+  /* v9.0.9：投影参数的【唯一来源】—— 绘制（draw.toScreen）/ 碰撞（update.w2s）
+     与玩家横向缩放（projXScale）全部调用它。以前三处各写一份 nearHW 公式，
+     只要系数不同步就会重新引入投影错位（补充Ⅵ 刚修好的红线）。 */
+  projParams(HW) {
+    const W = (View && View.W) || 480;
+    /* v9.0.9：上限系数 0.46 → 0.62，路面放宽，玩家左右可跑到更靠边 */
+    const nearHW = Math.min(W * 0.62, HW * 2.1);
+    return { nearHW: nearHW, farHW: nearHW * 0.10 };
+  },
   /* 世界 → 屏幕的横向缩放系数（t 为深度 0~1） */
   projXScale(HW, t) {
-    const W = (View && View.W) || 480;
-    const nearHW = Math.min(W * 0.46, HW * 2.1);
-    const farHW = nearHW * 0.10;
-    return (farHW + (nearHW - farHW) * t) / Math.max(HW, 1);
+    const pp = this.projParams(HW);
+    return (pp.farHW + (pp.nearHW - pp.farHW) * t) / Math.max(HW, 1);
   },
   /* 玩家所在深度（与 PLAYER_SCREEN_Y 对应） */
   playerDepth() {
@@ -4564,9 +4580,22 @@ const MAZE = {
     const R = this.RUN;
     if (!R || R.dead) return;
     const H = this.halfW(R.dist);
-    /* 速度：基础速度随距离缓慢上升，减速状态拉长恢复 */
-    R.spd = R.baseSpd * (1 + Math.min(R.dist / 3000, 0.7)) * (R.slowT > 0 ? 0.42 : 1);
+    /* 速度：基础速度随距离缓慢上升，减速用【限速平滑】过渡
+       v9.0.9 修复「忽快忽慢」：
+       · 旧版 slowT>0 时无条件乘 0.42（400→168，单帧掉 58%），slowT 归零后
+         又瞬跳回满速 —— 纯阶跃；护栏反复刷新 slowT 时速度在 0.42×/1.0× 间狂抖。
+       · 现在 slowT 只当「减速持续时间」计时器，slowK 是 0~1 的当前减速强度，
+         按【恒定斜率】限速逼近目标（进入 2.0/s、恢复 2.8/s）—— 每帧速度变化
+         严格有界（≈3.7/帧，肉眼无跳变），而不是指数缓动那种"开头一大跳"。
+       · 减速深度改为 28%（最慢 72%，旧版 42%），撞一下有代价但不突兀。
+       · 距离提速同时放缓：dist/3000 上限 0.7（最高 1.7×）→ dist/6000 上限 0.25（最高 1.25×） */
     if (R.slowT > 0) R.slowT -= dt;
+    if (R.slowK === undefined) R.slowK = 0;
+    const slowTarget = (R.slowT > 0) ? 1 : 0;
+    const slowRate = (slowTarget > R.slowK) ? 2.0 : 2.4;   // 进入稍慢、恢复稍快（每秒）
+    const dK = slowRate * dt;
+    R.slowK += clamp(slowTarget - R.slowK, -dK, dK);        // 限速逼近：单帧变化有界
+    R.spd = R.baseSpd * (1 + Math.min(R.dist / 6000, 0.25)) * (1 - R.slowK * 0.28);
     if (R.invul > 0) R.invul -= dt;
     if (R.hurt > 0) R.hurt -= dt;
     if (R.flash > 0) R.flash -= dt;
@@ -4633,8 +4662,9 @@ const MAZE = {
     const horizonV = H2v * 0.16;
     const Wv = (View && View.W) || 480;
     const nearYv = H2v + 40;
-    const nearHWv = Math.min(Wv * 0.46, H * 2.1);
-    const farHWv = nearHWv * 0.10;
+    /* v9.0.9：投影参数与 draw / projXScale 同源（唯一来源 projParams） */
+    const ppv = this.projParams(H);
+    const nearHWv = ppv.nearHW, farHWv = ppv.farHW;
     /* 世界坐标 → 屏幕坐标（与 MAZE.draw 中逐一对应） */
     const w2s = function (wx, wy) {
       const t = clamp((wy + 120) / (760 + 120), 0, 1);
@@ -5215,8 +5245,9 @@ const MAZE = {
 
     /* 世界坐标 → 屏幕坐标（远端窄、近端宽，营造景深） */
     const nearY = H2 + 40, farY = horizon;
-    const nearHW = Math.min(W * 0.46, HW * 2.1);
-    const farHW = nearHW * 0.10;
+    /* v9.0.9：投影参数与 update / projXScale 同源（唯一来源 projParams） */
+    const ppd = this.projParams(HW);
+    const nearHW = ppd.nearHW, farHW = ppd.farHW;
     const toScreen = function (wx, wy) {
       const t = clamp((wy - (-120)) / (760 - (-120)), 0, 1);   // 0 = 远端, 1 = 近端
       const z = 0.10 + t * 0.90;
@@ -5459,7 +5490,8 @@ const MAZE = {
     ctx.globalAlpha = 1;
 
     /* 速度线 */
-    const sv = clamp((R.spd - 300) / 260, 0, 1);
+    /* v9.0.9：速度线随减速强度平滑收敛（旧版会随 slowT 二值跳变，放大"忽快忽慢"观感） */
+    const sv = clamp((R.spd - 300) / 260, 0, 1) * (1 - 0.35 * (R.slowK || 0));
     if (sv > 0.02) {
       ctx.strokeStyle = 'rgba(255,255,255,' + (sv * 0.30).toFixed(2) + ')';
       ctx.lineWidth = 2;
@@ -6984,7 +7016,9 @@ const Game = {
     let mazeAnchorX = null;
     const mazeAim = function (clientX, resetAnchor) {
       if (!MAZE.RUN) return;
-      const half = Math.max(120, window.innerWidth * 0.42);
+      /* v9.0.9：满舵门槛放宽（0.42→0.30，下限 120→96）—— 手指位移约 117px 即满舵，
+         旧版要滑 164px 才到底，是"左右不灵活"的输入侧原因之一 */
+      const half = Math.max(96, window.innerWidth * 0.30);
       if (resetAnchor || mazeAnchorX == null) mazeAnchorX = clientX;
       MAZE.RUN.targetX = clamp((clientX - mazeAnchorX) / half, -1, 1);
     };
